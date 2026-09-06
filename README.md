@@ -7,9 +7,11 @@ Forme is a private-by-default fitness planner and tracker built with Next.js 16,
 - Public product page and seeded vegan beginner plan preview
 - Email/password accounts with database-backed sessions
 - Adult-only, five-part onboarding and readiness screening
-- Deterministic 2-, 3-, or 4-day private plan creation
+- Six evidence-informed built-in plans spanning 2–6 training days
+- Schedule- and goal-aware plan recommendation during onboarding
 - Workout sessions with set, rep, load, RIR, effort, and note logging
-- Exercise instructions and technique cues
+- Expandable exercise library with custom prescriptions
+- Exercise instructions, technique cues, private notes, and safe YouTube/Vimeo embeds
 - Body-weight and waist progress tracking with charts
 - Context-aware coach in safe deterministic mock mode
 - Transparent calorie/protein starting estimates
@@ -42,6 +44,8 @@ The local workspace already has an ignored `.env.local`. Never commit it. The da
 | `AI_GATEWAY_API_KEY` | Reserved for a future live provider integration |
 
 Mock mode is deliberate: plan creation and coach replies remain predictable and testable without sending health context to a model provider. A live provider can be added behind the coach route after consent, retention, redaction, and model policy decisions are made.
+
+The evidence and programming rationale for the built-in plans is recorded in [`docs/training-research.md`](docs/training-research.md).
 
 ## Commands
 

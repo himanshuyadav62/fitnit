@@ -31,6 +31,8 @@ export type WorkoutExercise = {
   restSeconds: number;
   targetRir: number;
   notes: string | null;
+  userNotes: string | null;
+  videoUrlOverride: string | null;
 };
 
 export type WorkoutBlock = {
@@ -58,6 +60,8 @@ function groupWorkouts(rows: Array<{
   restSeconds: number | null;
   targetRir: number | null;
   notes: string | null;
+  userNotes?: string | null;
+  videoUrlOverride?: string | null;
 }>) {
   const grouped = new Map<string, WorkoutBlock>();
   for (const row of rows) {
@@ -82,6 +86,8 @@ function groupWorkouts(rows: Array<{
         restSeconds: row.restSeconds!,
         targetRir: row.targetRir!,
         notes: row.notes,
+        userNotes: row.userNotes ?? null,
+        videoUrlOverride: row.videoUrlOverride ?? null,
       });
     }
     grouped.set(row.workoutId, workout);
@@ -121,6 +127,50 @@ export async function getFeaturedTemplate() {
   return { ...template, workouts: groupWorkouts(rows) };
 }
 
+export async function getPlanTemplates() {
+  return db
+    .select()
+    .from(planTemplates)
+    .orderBy(asc(planTemplates.daysPerWeek), asc(planTemplates.title));
+}
+
+export async function getTemplateBySlug(slug: string) {
+  const template = await db.query.planTemplates.findFirst({ where: eq(planTemplates.slug, slug) });
+  if (!template) return null;
+  const rows = await db
+    .select({
+      workoutId: templateWorkouts.id,
+      dayNumber: templateWorkouts.dayNumber,
+      title: templateWorkouts.title,
+      focus: templateWorkouts.focus,
+      itemId: templateExercises.id,
+      exerciseId: exercises.id,
+      slug: exercises.slug,
+      name: exercises.name,
+      equipment: exercises.equipment,
+      sortOrder: templateExercises.sortOrder,
+      sets: templateExercises.sets,
+      repMin: templateExercises.repMin,
+      repMax: templateExercises.repMax,
+      restSeconds: templateExercises.restSeconds,
+      targetRir: templateExercises.targetRir,
+      notes: templateExercises.notes,
+    })
+    .from(templateWorkouts)
+    .leftJoin(templateExercises, eq(templateExercises.workoutId, templateWorkouts.id))
+    .leftJoin(exercises, eq(exercises.id, templateExercises.exerciseId))
+    .where(eq(templateWorkouts.templateId, template.id))
+    .orderBy(asc(templateWorkouts.dayNumber), asc(templateExercises.sortOrder));
+  return { ...template, workouts: groupWorkouts(rows) };
+}
+
+export async function getExerciseLibrary() {
+  return db
+    .select({ id: exercises.id, slug: exercises.slug, name: exercises.name, equipment: exercises.equipment, movementPattern: exercises.movementPattern })
+    .from(exercises)
+    .orderBy(asc(exercises.name));
+}
+
 export async function getActivePlan(userId: string) {
   const plan = await db.query.plans.findFirst({
     where: and(eq(plans.userId, userId), eq(plans.status, "active")),
@@ -145,6 +195,8 @@ export async function getActivePlan(userId: string) {
       restSeconds: planExercises.restSeconds,
       targetRir: planExercises.targetRir,
       notes: planExercises.notes,
+      userNotes: planExercises.userNotes,
+      videoUrlOverride: planExercises.videoUrlOverride,
     })
     .from(planWorkouts)
     .leftJoin(planExercises, eq(planExercises.workoutId, planWorkouts.id))
@@ -216,6 +268,8 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
         restSeconds: planExercises.restSeconds,
         targetRir: planExercises.targetRir,
         notes: planExercises.notes,
+        userNotes: planExercises.userNotes,
+        videoUrlOverride: planExercises.videoUrlOverride,
       })
       .from(planExercises)
       .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
@@ -228,6 +282,23 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
 
 export async function getExercise(slug: string) {
   return db.query.exercises.findFirst({ where: eq(exercises.slug, slug) });
+}
+
+export async function getActivePlanExercise(userId: string, slug: string, planExerciseId?: string) {
+  const rows = await db
+    .select({
+      id: planExercises.id,
+      userNotes: planExercises.userNotes,
+      videoUrlOverride: planExercises.videoUrlOverride,
+      programmingNotes: planExercises.notes,
+    })
+    .from(planExercises)
+    .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
+    .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(plans.userId, userId), eq(plans.status, "active"), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function getProgress(userId: string) {

@@ -106,6 +106,7 @@ export type OnboardingAnswers = {
   sleepHours: number;
   stressLevel: number;
   medicalClearanceNeeded: boolean;
+  selectedPlanSlug?: string;
 };
 
 export const profiles = pgTable("profiles", {
@@ -268,6 +269,8 @@ export const planExercises = pgTable(
     restSeconds: integer("rest_seconds").notNull(),
     targetRir: integer("target_rir").default(2).notNull(),
     notes: text("notes"),
+    userNotes: text("user_notes"),
+    videoUrlOverride: text("video_url_override"),
   },
   (table) => [
     uniqueIndex("plan_exercise_order_idx").on(table.workoutId, table.sortOrder),

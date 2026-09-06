@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { db } from "@/db";
 import {
   measurements,
   planExercises,
+  planTemplates,
   plans,
   planWorkouts,
   profiles,
@@ -18,9 +19,11 @@ import {
   workoutSessions,
 } from "@/db/schema";
 import { calculateNutritionTarget, getAge } from "@/lib/fitness";
+import { recommendPlanSlug } from "@/lib/plan-recommendation";
 import { requireUser } from "@/lib/session";
+import { getSafeEmbedUrl } from "@/lib/video";
 
-export type ActionState = { error?: string };
+export type ActionState = { error?: string; success?: string; successId?: string };
 
 const onboardingSchema = z.object({
   birthDate: z.string().date(),
@@ -35,7 +38,7 @@ const onboardingSchema = z.object({
   goal: z.enum(["build_muscle", "lose_fat", "get_stronger", "general_fitness"]),
   experience: z.enum(["beginner", "intermediate", "advanced"]),
   diet: z.enum(["vegan", "vegetarian", "omnivore", "other"]),
-  daysPerWeek: z.coerce.number().int().min(2).max(4),
+  daysPerWeek: z.coerce.number().int().min(2).max(6),
   sessionMinutes: z.coerce.number().int().min(30).max(90),
   activityLevel: z.enum(["low", "moderate", "high"]),
   sleepHours: z.coerce.number().min(3).max(12),
@@ -44,11 +47,11 @@ const onboardingSchema = z.object({
   timezone: z.string().min(1).max(80),
 });
 
-async function cloneFeaturedPlan(userId: string, daysPerWeek: number, goal: "build_muscle" | "lose_fat" | "get_stronger" | "general_fitness") {
+async function cloneTemplatePlan(userId: string, templateSlug: string) {
   const template = await db.query.planTemplates.findFirst({
-    where: (table, { eq }) => eq(table.slug, "beginner-vegan-muscle-gain-3-day"),
+    where: (table, { eq }) => eq(table.slug, templateSlug),
   });
-  if (!template) throw new Error("The starter plan has not been seeded yet.");
+  if (!template) throw new Error("This plan has not been seeded yet.");
   const sourceWorkouts = await db
     .select()
     .from(templateWorkouts)
@@ -56,10 +59,7 @@ async function cloneFeaturedPlan(userId: string, daysPerWeek: number, goal: "bui
     .orderBy(templateWorkouts.dayNumber);
   if (sourceWorkouts.length === 0) throw new Error("The starter plan has no workouts.");
 
-  const selected = Array.from({ length: daysPerWeek }, (_, index) => ({
-    source: sourceWorkouts[index % sourceWorkouts.length],
-    dayNumber: index + 1,
-  }));
+  const selected = sourceWorkouts.map((source, index) => ({ source, dayNumber: index + 1 }));
   const sourceItems = await db
     .select()
     .from(templateExercises)
@@ -72,10 +72,10 @@ async function cloneFeaturedPlan(userId: string, daysPerWeek: number, goal: "bui
       .values({
         userId,
         sourceTemplateId: template.id,
-        name: daysPerWeek === 3 ? template.title : `Personal Foundation — ${daysPerWeek} Days`,
-        goal,
-        daysPerWeek,
-        durationWeeks: 8,
+        name: template.title,
+        goal: template.goal,
+        daysPerWeek: template.daysPerWeek,
+        durationWeeks: template.durationWeeks,
       })
       .returning();
     const createdWorkouts = await tx
@@ -83,25 +83,24 @@ async function cloneFeaturedPlan(userId: string, daysPerWeek: number, goal: "bui
       .values(selected.map(({ source, dayNumber }) => ({
           planId: plan.id,
           dayNumber,
-          title: dayNumber <= sourceWorkouts.length ? source.title : "Foundation D",
-          focus: dayNumber <= sourceWorkouts.length ? source.focus : "Technique, easy volume and recovery",
+          title: source.title,
+          focus: source.focus,
         })))
       .returning();
     const exerciseValues = createdWorkouts.flatMap((workout) => {
       const selectedDay = selected[workout.dayNumber - 1];
-      const isOptionalDay = workout.dayNumber > sourceWorkouts.length;
       return sourceItems
         .filter((item) => item.workoutId === selectedDay.source.id)
         .map((item) => ({
           workoutId: workout.id,
           exerciseId: item.exerciseId,
           sortOrder: item.sortOrder,
-          sets: isOptionalDay ? Math.max(2, item.sets - 1) : item.sets,
+          sets: item.sets,
           repMin: item.repMin,
           repMax: item.repMax,
           restSeconds: item.restSeconds,
-          targetRir: isOptionalDay ? 3 : item.targetRir,
-          notes: isOptionalDay ? "Keep this optional day easy and technique-focused." : item.notes,
+          targetRir: item.targetRir,
+          notes: item.notes,
         }));
     });
     if (exerciseValues.length > 0) await tx.insert(planExercises).values(exerciseValues);
@@ -155,6 +154,7 @@ export async function completeOnboarding(_state: ActionState, formData: FormData
         sleepHours: data.sleepHours,
         stressLevel: data.stressLevel,
         medicalClearanceNeeded,
+        selectedPlanSlug: recommendPlanSlug(data.daysPerWeek, data.goal, data.diet),
       },
     })
     .onConflictDoUpdate({
@@ -184,6 +184,7 @@ export async function completeOnboarding(_state: ActionState, formData: FormData
           sleepHours: data.sleepHours,
           stressLevel: data.stressLevel,
           medicalClearanceNeeded,
+          selectedPlanSlug: recommendPlanSlug(data.daysPerWeek, data.goal, data.diet),
         },
         updatedAt: new Date(),
       },
@@ -192,7 +193,7 @@ export async function completeOnboarding(_state: ActionState, formData: FormData
     revalidatePath("/app/onboarding");
     return { error: "Your answers suggest getting medical clearance before starting a generated exercise plan. Your profile was saved." };
   }
-  await cloneFeaturedPlan(currentUser.id, data.daysPerWeek, data.goal);
+  await cloneTemplatePlan(currentUser.id, recommendPlanSlug(data.daysPerWeek, data.goal, data.diet));
   redirect("/app");
 }
 
@@ -200,9 +201,86 @@ export async function cloneStarterPlan() {
   const currentUser = await requireUser();
   const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, currentUser.id) });
   if (!profile?.onboardingComplete || !profile.goal || !profile.daysPerWeek) redirect("/app/onboarding");
-  await cloneFeaturedPlan(currentUser.id, profile.daysPerWeek, profile.goal);
+  await cloneTemplatePlan(currentUser.id, recommendPlanSlug(profile.daysPerWeek, profile.goal, profile.diet ?? undefined));
   revalidatePath("/app");
   redirect("/app/plan");
+}
+
+export async function activateTemplate(formData: FormData) {
+  const currentUser = await requireUser();
+  const templateSlug = z.string().min(1).max(120).parse(formData.get("templateSlug"));
+  const profile = await db.query.profiles.findFirst({ where: eq(profiles.userId, currentUser.id) });
+  if (!profile?.onboardingComplete) redirect("/app/onboarding");
+  const exists = await db.query.planTemplates.findFirst({ where: eq(planTemplates.slug, templateSlug) });
+  if (!exists) throw new Error("Plan template not found.");
+  await cloneTemplatePlan(currentUser.id, templateSlug);
+  await db.update(profiles).set({ daysPerWeek: exists.daysPerWeek, updatedAt: new Date() }).where(eq(profiles.userId, currentUser.id));
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  redirect("/app/plan");
+}
+
+const exerciseMutationSchema = z.object({
+  workoutId: z.string().uuid(),
+  exerciseId: z.string().uuid(),
+  sets: z.coerce.number().int().min(1).max(10),
+  repMin: z.coerce.number().int().min(1).max(100),
+  repMax: z.coerce.number().int().min(1).max(100),
+  restSeconds: z.coerce.number().int().min(15).max(600),
+  targetRir: z.coerce.number().int().min(0).max(5),
+  userNotes: z.string().max(1000).optional(),
+  videoUrlOverride: z.string().max(500).optional(),
+});
+
+export async function addExerciseToWorkout(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = exerciseMutationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the exercise details." };
+  const data = parsed.data;
+  if (data.repMin > data.repMax) return { error: "The minimum reps cannot exceed the maximum reps." };
+  if (data.videoUrlOverride && !getSafeEmbedUrl(data.videoUrlOverride)) return { error: "Use a valid YouTube or Vimeo video URL." };
+  const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(planWorkouts.id, data.workoutId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) return { error: "Workout not found." };
+  const last = await db.select({ sortOrder: planExercises.sortOrder }).from(planExercises)
+    .where(eq(planExercises.workoutId, data.workoutId)).orderBy(desc(planExercises.sortOrder)).limit(1);
+  await db.insert(planExercises).values({
+    workoutId: data.workoutId,
+    exerciseId: data.exerciseId,
+    sortOrder: (last[0]?.sortOrder ?? 0) + 1,
+    sets: data.sets,
+    repMin: data.repMin,
+    repMax: data.repMax,
+    restSeconds: data.restSeconds,
+    targetRir: data.targetRir,
+    userNotes: data.userNotes || null,
+    videoUrlOverride: data.videoUrlOverride || null,
+  });
+  revalidatePath("/app/plan");
+  return { success: "Exercise added to the workout.", successId: crypto.randomUUID() };
+}
+
+export async function updateExerciseDetails(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = z.object({
+    planExerciseId: z.string().uuid(),
+    slug: z.string().regex(/^[a-z0-9-]+$/).max(120),
+    userNotes: z.string().max(1000).optional(),
+    videoUrlOverride: z.string().max(500).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your notes." };
+  const data = parsed.data;
+  if (data.videoUrlOverride && !getSafeEmbedUrl(data.videoUrlOverride)) return { error: "Use a valid YouTube or Vimeo video URL." };
+  const owned = await db.select({ id: planExercises.id }).from(planExercises)
+    .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(planExercises.id, data.planExerciseId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) return { error: "Exercise not found in your active plan." };
+  await db.update(planExercises).set({ userNotes: data.userNotes || null, videoUrlOverride: data.videoUrlOverride || null }).where(eq(planExercises.id, data.planExerciseId));
+  revalidatePath("/app/plan");
+  revalidatePath(`/app/exercises/${data.slug}`);
+  return { success: "Notes and video saved.", successId: crypto.randomUUID() };
 }
 
 export async function startWorkout(formData: FormData) {

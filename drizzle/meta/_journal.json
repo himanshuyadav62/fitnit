@@ -15,6 +15,13 @@
       "when": 1788639684572,
       "tag": "0001_shiny_blonde_phantom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788700094916,
+      "tag": "0002_careless_lockjaw",
+      "breakpoints": true
     }
   ]
 }
