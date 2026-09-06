@@ -34,6 +34,7 @@ export type WorkoutExercise = {
   notes: string | null;
   userNotes: string | null;
   videoUrlOverride: string | null;
+  label: string | null;
 };
 
 export type WorkoutBlock = {
@@ -41,6 +42,7 @@ export type WorkoutBlock = {
   dayNumber: number;
   title: string;
   focus: string;
+  label: string | null;
   exercises: WorkoutExercise[];
 };
 
@@ -49,6 +51,7 @@ function groupWorkouts(rows: Array<{
   dayNumber: number;
   title: string;
   focus: string;
+  workoutLabel?: string | null;
   itemId: string | null;
   exerciseId: string | null;
   slug: string | null;
@@ -63,6 +66,7 @@ function groupWorkouts(rows: Array<{
   notes: string | null;
   userNotes?: string | null;
   videoUrlOverride?: string | null;
+  itemLabel?: string | null;
 }>) {
   const grouped = new Map<string, WorkoutBlock>();
   for (const row of rows) {
@@ -71,6 +75,7 @@ function groupWorkouts(rows: Array<{
       dayNumber: row.dayNumber,
       title: row.title,
       focus: row.focus,
+      label: row.workoutLabel ?? null,
       exercises: [],
     };
     if (row.itemId && row.exerciseId && row.slug && row.name && row.equipment) {
@@ -89,6 +94,7 @@ function groupWorkouts(rows: Array<{
         notes: row.notes,
         userNotes: row.userNotes ?? null,
         videoUrlOverride: row.videoUrlOverride ?? null,
+        label: row.itemLabel ?? null,
       });
     }
     grouped.set(row.workoutId, workout);
@@ -184,6 +190,7 @@ export async function getActivePlan(userId: string) {
       dayNumber: planWorkouts.dayNumber,
       title: planWorkouts.title,
       focus: planWorkouts.focus,
+      workoutLabel: planWorkouts.label,
       itemId: planExercises.id,
       exerciseId: exercises.id,
       slug: exercises.slug,
@@ -198,6 +205,7 @@ export async function getActivePlan(userId: string) {
       notes: planExercises.notes,
       userNotes: planExercises.userNotes,
       videoUrlOverride: planExercises.videoUrlOverride,
+      itemLabel: planExercises.label,
     })
     .from(planWorkouts)
     .leftJoin(planExercises, and(eq(planExercises.workoutId, planWorkouts.id), eq(planExercises.isActive, true)))
@@ -271,6 +279,7 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
         notes: workoutSessionExercises.programmingNotes,
         userNotes: workoutSessionExercises.userNotes,
         videoUrlOverride: workoutSessionExercises.videoUrl,
+        label: workoutSessionExercises.label,
       })
       .from(workoutSessionExercises)
       .where(eq(workoutSessionExercises.sessionId, sessionId))
@@ -288,6 +297,7 @@ export async function getActivePlanExercise(userId: string, slug: string, planEx
   const rows = await db
     .select({
       id: planExercises.id,
+      label: planExercises.label,
       userNotes: planExercises.userNotes,
       videoUrlOverride: planExercises.videoUrlOverride,
       programmingNotes: planExercises.notes,
@@ -309,6 +319,7 @@ export async function getTrainingAnalytics(userId: string) {
       completedAt: workoutSessions.completedAt,
       title: planWorkouts.title,
       planDay: planWorkouts.dayNumber,
+      dayLabel: planWorkouts.label,
       effort: workoutSessions.perceivedEffort,
       totalSets: sql<number>`count(${setLogs.id})::int`,
       totalReps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
@@ -320,7 +331,7 @@ export async function getTrainingAnalytics(userId: string) {
     .innerJoin(planWorkouts, eq(planWorkouts.id, workoutSessions.planWorkoutId))
     .leftJoin(setLogs, eq(setLogs.sessionId, workoutSessions.id))
     .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt)))
-    .groupBy(workoutSessions.id, planWorkouts.title, planWorkouts.dayNumber)
+    .groupBy(workoutSessions.id, planWorkouts.title, planWorkouts.dayNumber, planWorkouts.label)
     .orderBy(desc(workoutSessions.startedAt))
     .limit(60);
 
@@ -349,6 +360,7 @@ export async function getTrainingAnalytics(userId: string) {
       sessionId: workoutSessionExercises.sessionId,
       planExerciseId: workoutSessionExercises.planExerciseId,
       name: workoutSessionExercises.exerciseName,
+      label: workoutSessionExercises.label,
       sortOrder: workoutSessionExercises.sortOrder,
       sets: sql<number>`count(${setLogs.id})::int`,
       reps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
@@ -358,7 +370,7 @@ export async function getTrainingAnalytics(userId: string) {
     .from(workoutSessionExercises)
     .leftJoin(setLogs, and(eq(setLogs.sessionId, workoutSessionExercises.sessionId), eq(setLogs.planExerciseId, workoutSessionExercises.planExerciseId)))
     .where(inArray(workoutSessionExercises.sessionId, recentSessionIds))
-    .groupBy(workoutSessionExercises.sessionId, workoutSessionExercises.planExerciseId, workoutSessionExercises.exerciseName, workoutSessionExercises.sortOrder)
+    .groupBy(workoutSessionExercises.sessionId, workoutSessionExercises.planExerciseId, workoutSessionExercises.exerciseName, workoutSessionExercises.label, workoutSessionExercises.sortOrder)
     .orderBy(desc(workoutSessionExercises.sessionId), asc(workoutSessionExercises.sortOrder));
 
   return { sessions, exerciseTotals, recentExercises };

@@ -245,6 +245,7 @@ export const planWorkouts = pgTable(
     dayNumber: integer("day_number").notNull(),
     title: text("title").notNull(),
     focus: text("focus").notNull(),
+    label: text("label"),
   },
   (table) => [
     uniqueIndex("plan_workout_day_idx").on(table.planId, table.dayNumber),
@@ -271,6 +272,7 @@ export const planExercises = pgTable(
     notes: text("notes"),
     userNotes: text("user_notes"),
     videoUrlOverride: text("video_url_override"),
+    label: text("label"),
     isActive: boolean("is_active").default(true).notNull(),
   },
   (table) => [
@@ -321,6 +323,7 @@ export const workoutSessionExercises = pgTable(
     programmingNotes: text("programming_notes"),
     userNotes: text("user_notes"),
     videoUrl: text("video_url"),
+    label: text("label"),
   },
   (table) => [
     primaryKey({ columns: [table.sessionId, table.planExerciseId] }),

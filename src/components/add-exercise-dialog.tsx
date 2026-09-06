@@ -37,6 +37,7 @@ export function AddExerciseDialog({ workoutId, exercises }: { workoutId: string;
         <input type="hidden" name="workoutId" value={workoutId} />
         <DialogHeader><DialogTitle>Add an exercise</DialogTitle><DialogDescription>Choose the movement, then shape its prescription for this workout.</DialogDescription></DialogHeader>
         <div className="space-y-2"><Label htmlFor={`exercise-${workoutId}`}>Exercise</Label><Select name="exerciseId" required><SelectTrigger id={`exercise-${workoutId}`}><SelectValue placeholder="Search the movement library" /></SelectTrigger><SelectContent>{exercises.map((exercise) => <SelectItem key={exercise.id} value={exercise.id}>{exercise.name} · {exercise.equipment}</SelectItem>)}</SelectContent></Select></div>
+        <div className="space-y-2"><Label htmlFor={`label-${workoutId}`}>Label (optional)</Label><Input id={`label-${workoutId}`} name="label" maxLength={32} placeholder="Heavy, priority, optional, warm-up…" /></div>
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
           <Field label="Sets"><Input name="sets" type="number" min="1" max="10" defaultValue="3" required /></Field>
           <Field label="Min reps"><Input name="repMin" type="number" min="1" max="100" defaultValue="8" required /></Field>

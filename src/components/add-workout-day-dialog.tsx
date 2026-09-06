@@ -31,6 +31,7 @@ export function AddWorkoutDayDialog({ planId, disabled }: { planId: string; disa
         <input type="hidden" name="planId" value={planId} />
         <DialogHeader><DialogTitle>Add a training day</DialogTitle><DialogDescription>Create an empty day, then add exercises from the movement library. Keep at least one recovery day when possible.</DialogDescription></DialogHeader>
         <div className="space-y-2"><Label htmlFor="day-title">Day name</Label><Input id="day-title" name="title" placeholder="Optional Arms + Core" maxLength={80} required /></div>
+        <div className="space-y-2"><Label htmlFor="day-label">Label (optional)</Label><Input id="day-label" name="label" placeholder="Recovery-friendly, optional, priority…" maxLength={32} /></div>
         <div className="space-y-2"><Label htmlFor="day-focus">Focus</Label><Textarea id="day-focus" name="focus" placeholder="Technique work, smaller muscle groups, and easy conditioning" maxLength={160} required /></div>
         {state.error && <Alert variant="destructive"><AlertDescription>{state.error}</AlertDescription></Alert>}
         <DialogFooter><Button type="button" variant="ghost" onClick={() => setOpen(false)}>Cancel</Button><Button disabled={pending}>{pending && <LoaderCircle className="animate-spin" />}{pending ? "Adding day…" : "Add day"}</Button></DialogFooter>

@@ -8,6 +8,7 @@ import { AddWorkoutDayDialog } from "@/components/add-workout-day-dialog";
 import { ExerciseDetailsDialog } from "@/components/exercise-details-dialog";
 import { RemoveExerciseButton } from "@/components/remove-exercise-button";
 import { SubmitButton } from "@/components/submit-button";
+import { WorkoutDayDetailsDialog } from "@/components/workout-day-details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,14 +30,14 @@ export default async function PlanPage() {
     </div>
 
     <div className="grid gap-6 lg:grid-cols-2">{plan.workouts.map((workout) => <Card key={workout.id} className="border-white/8">
-      <CardHeader><div className="flex items-start justify-between gap-4"><div><Badge variant="outline">Day {workout.dayNumber}</Badge><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><Dumbbell className="size-5 text-primary" /></div></CardHeader>
+      <CardHeader><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Day {workout.dayNumber}</Badge>{workout.label && <Badge variant="secondary">{workout.label}</Badge>}</div><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><div className="flex items-center gap-1"><WorkoutDayDetailsDialog id={workout.id} title={workout.title} focus={workout.focus} label={workout.label} /><Dumbbell className="size-5 text-primary" /></div></div></CardHeader>
       <CardContent>
         <div className="space-y-2">{workout.exercises.map((exercise) => <div key={exercise.id} className="group flex items-center gap-2 rounded-lg border bg-muted/15 p-3 transition-colors hover:border-primary/30">
           <Link href={`/app/exercises/${exercise.slug}?item=${exercise.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-4">
-            <div className="min-w-0"><p className="truncate text-sm font-medium group-hover:text-primary">{exercise.name}</p><p className="text-xs text-muted-foreground">{exercise.equipment}</p>{exercise.userNotes && <p className="mt-1 flex items-center gap-1 truncate text-xs text-primary"><NotebookPen className="size-3" />{exercise.userNotes}</p>}</div>
+            <div className="min-w-0"><div className="flex min-w-0 items-center gap-2"><p className="truncate text-sm font-medium group-hover:text-primary">{exercise.name}</p>{exercise.label && <Badge variant="secondary" className="shrink-0">{exercise.label}</Badge>}</div><p className="text-xs text-muted-foreground">{exercise.equipment}</p>{exercise.userNotes && <p className="mt-1 flex items-center gap-1 truncate text-xs text-primary"><NotebookPen className="size-3" />{exercise.userNotes}</p>}</div>
             <div className="shrink-0 text-right"><p className="text-sm">{exercise.sets} × {exercise.repMin}–{exercise.repMax}</p><p className="flex items-center justify-end gap-1 text-xs text-muted-foreground"><Clock3 className="size-3" />{exercise.restSeconds}s</p></div>
           </Link>
-          <ExerciseDetailsDialog id={exercise.id} slug={exercise.slug} name={exercise.name} userNotes={exercise.userNotes} videoUrl={exercise.videoUrlOverride} />
+          <ExerciseDetailsDialog id={exercise.id} slug={exercise.slug} name={exercise.name} userNotes={exercise.userNotes} videoUrl={exercise.videoUrlOverride} label={exercise.label} />
           <RemoveExerciseButton id={exercise.id} name={exercise.name} />
         </div>)}</div>
         {workout.exercises.length === 0 && <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">This day is empty. Add its first exercise before starting.</div>}

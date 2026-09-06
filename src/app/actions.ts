@@ -232,6 +232,7 @@ const exerciseMutationSchema = z.object({
   targetRir: z.coerce.number().int().min(0).max(5),
   userNotes: z.string().max(1000).optional(),
   videoUrlOverride: z.string().max(500).optional(),
+  label: z.string().trim().max(32).optional(),
 });
 
 export async function addExerciseToWorkout(_state: ActionState, formData: FormData): Promise<ActionState> {
@@ -258,6 +259,7 @@ export async function addExerciseToWorkout(_state: ActionState, formData: FormDa
     targetRir: data.targetRir,
     userNotes: data.userNotes || null,
     videoUrlOverride: data.videoUrlOverride || null,
+    label: data.label || null,
   });
   revalidatePath("/app/plan");
   return { success: "Exercise added to the workout.", successId: crypto.randomUUID() };
@@ -270,6 +272,7 @@ export async function updateExerciseDetails(_state: ActionState, formData: FormD
     slug: z.string().regex(/^[a-z0-9-]+$/).max(120),
     userNotes: z.string().max(1000).optional(),
     videoUrlOverride: z.string().max(500).optional(),
+    label: z.string().trim().max(32).optional(),
   }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check your notes." };
   const data = parsed.data;
@@ -279,10 +282,10 @@ export async function updateExerciseDetails(_state: ActionState, formData: FormD
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
     .where(and(eq(planExercises.id, data.planExerciseId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Exercise not found in your active plan." };
-  await db.update(planExercises).set({ userNotes: data.userNotes || null, videoUrlOverride: data.videoUrlOverride || null }).where(eq(planExercises.id, data.planExerciseId));
+  await db.update(planExercises).set({ userNotes: data.userNotes || null, videoUrlOverride: data.videoUrlOverride || null, label: data.label || null }).where(eq(planExercises.id, data.planExerciseId));
   revalidatePath("/app/plan");
   revalidatePath(`/app/exercises/${data.slug}`);
-  return { success: "Notes and video saved.", successId: crypto.randomUUID() };
+  return { success: "Exercise details saved.", successId: crypto.randomUUID() };
 }
 
 export async function addWorkoutDay(_state: ActionState, formData: FormData): Promise<ActionState> {
@@ -291,6 +294,7 @@ export async function addWorkoutDay(_state: ActionState, formData: FormData): Pr
     planId: z.string().uuid(),
     title: z.string().trim().min(2).max(80),
     focus: z.string().trim().min(2).max(160),
+    label: z.string().trim().max(32).optional(),
   }).safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the new training day." };
   const owned = await db.select({ id: plans.id }).from(plans)
@@ -301,12 +305,31 @@ export async function addWorkoutDay(_state: ActionState, formData: FormData): Pr
   const dayNumber = (last[0]?.dayNumber ?? 0) + 1;
   if (dayNumber > 7) return { error: "Plans are limited to seven training days per week." };
   await db.transaction(async (tx) => {
-    await tx.insert(planWorkouts).values({ planId: parsed.data.planId, dayNumber, title: parsed.data.title, focus: parsed.data.focus });
+    await tx.insert(planWorkouts).values({ planId: parsed.data.planId, dayNumber, title: parsed.data.title, focus: parsed.data.focus, label: parsed.data.label || null });
     await tx.update(plans).set({ daysPerWeek: dayNumber, updatedAt: new Date() }).where(eq(plans.id, parsed.data.planId));
   });
   revalidatePath("/app");
   revalidatePath("/app/plan");
   return { success: `Day ${dayNumber} added.`, successId: crypto.randomUUID() };
+}
+
+export async function updateWorkoutDay(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = z.object({
+    workoutId: z.string().uuid(),
+    title: z.string().trim().min(2).max(80),
+    focus: z.string().trim().min(2).max(160),
+    label: z.string().trim().max(32).optional(),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the day details." };
+  const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(planWorkouts.id, parsed.data.workoutId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) return { error: "Training day not found." };
+  await db.update(planWorkouts).set({ title: parsed.data.title, focus: parsed.data.focus, label: parsed.data.label || null }).where(eq(planWorkouts.id, parsed.data.workoutId));
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  return { success: "Training day updated.", successId: crypto.randomUUID() };
 }
 
 export async function removeExercise(formData: FormData) {
@@ -347,6 +370,7 @@ export async function startWorkout(formData: FormData) {
       programmingNotes: planExercises.notes,
       userNotes: planExercises.userNotes,
       videoUrl: planExercises.videoUrlOverride,
+      label: planExercises.label,
     }).from(planExercises)
       .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
       .where(and(eq(planExercises.workoutId, workoutId), eq(planExercises.isActive, true)))

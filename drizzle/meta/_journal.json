@@ -36,6 +36,13 @@
       "when": 1788713342183,
       "tag": "0004_hot_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788719764697,
+      "tag": "0005_lying_next_avengers",
+      "breakpoints": true
     }
   ]
 }
