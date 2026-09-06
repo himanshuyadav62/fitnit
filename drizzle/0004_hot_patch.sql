@@ -1,0 +1,1 @@
+CREATE INDEX "workout_session_exercise_plan_exercise_idx" ON "workout_session_exercises" USING btree ("plan_exercise_id");

@@ -271,6 +271,7 @@ export const planExercises = pgTable(
     notes: text("notes"),
     userNotes: text("user_notes"),
     videoUrlOverride: text("video_url_override"),
+    isActive: boolean("is_active").default(true).notNull(),
   },
   (table) => [
     uniqueIndex("plan_exercise_order_idx").on(table.workoutId, table.sortOrder),
@@ -294,6 +295,38 @@ export const workoutSessions = pgTable(
     notes: text("notes"),
   },
   (table) => [index("workout_session_user_started_idx").on(table.userId, table.startedAt)],
+);
+
+export const workoutSessionExercises = pgTable(
+  "workout_session_exercises",
+  {
+    sessionId: uuid("session_id")
+      .notNull()
+      .references(() => workoutSessions.id, { onDelete: "cascade" }),
+    planExerciseId: uuid("plan_exercise_id")
+      .notNull()
+      .references(() => planExercises.id),
+    exerciseId: uuid("exercise_id")
+      .notNull()
+      .references(() => exercises.id),
+    exerciseName: text("exercise_name").notNull(),
+    exerciseSlug: text("exercise_slug").notNull(),
+    equipment: text("equipment").notNull(),
+    sortOrder: integer("sort_order").notNull(),
+    sets: integer("sets").notNull(),
+    repMin: integer("rep_min").notNull(),
+    repMax: integer("rep_max").notNull(),
+    restSeconds: integer("rest_seconds").notNull(),
+    targetRir: integer("target_rir").notNull(),
+    programmingNotes: text("programming_notes"),
+    userNotes: text("user_notes"),
+    videoUrl: text("video_url"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sessionId, table.planExerciseId] }),
+    index("workout_session_exercise_exercise_idx").on(table.exerciseId),
+    index("workout_session_exercise_plan_exercise_idx").on(table.planExerciseId),
+  ],
 );
 
 export const setLogs = pgTable(

@@ -11,7 +11,9 @@ Forme is a private-by-default fitness planner and tracker built with Next.js 16,
 - Schedule- and goal-aware plan recommendation during onboarding
 - Workout sessions with set, rep, load, RIR, effort, and note logging
 - Expandable exercise library with custom prescriptions
+- Editable plans with additional training days and history-safe exercise removal
 - Exercise instructions, technique cues, private notes, and safe YouTube/Vimeo embeds
+- Immutable workout snapshots plus weekday, duration, volume, load and rep analytics
 - Body-weight and waist progress tracking with charts
 - Context-aware coach in safe deterministic mock mode
 - Transparent calorie/protein starting estimates

@@ -7,6 +7,7 @@ import { z } from "zod";
 
 import { db } from "@/db";
 import {
+  exercises,
   measurements,
   planExercises,
   planTemplates,
@@ -17,6 +18,7 @@ import {
   templateExercises,
   templateWorkouts,
   workoutSessions,
+  workoutSessionExercises,
 } from "@/db/schema";
 import { calculateNutritionTarget, getAge } from "@/lib/fitness";
 import { recommendPlanSlug } from "@/lib/plan-recommendation";
@@ -283,6 +285,42 @@ export async function updateExerciseDetails(_state: ActionState, formData: FormD
   return { success: "Notes and video saved.", successId: crypto.randomUUID() };
 }
 
+export async function addWorkoutDay(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = z.object({
+    planId: z.string().uuid(),
+    title: z.string().trim().min(2).max(80),
+    focus: z.string().trim().min(2).max(160),
+  }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the new training day." };
+  const owned = await db.select({ id: plans.id }).from(plans)
+    .where(and(eq(plans.id, parsed.data.planId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) return { error: "Active plan not found." };
+  const last = await db.select({ dayNumber: planWorkouts.dayNumber }).from(planWorkouts)
+    .where(eq(planWorkouts.planId, parsed.data.planId)).orderBy(desc(planWorkouts.dayNumber)).limit(1);
+  const dayNumber = (last[0]?.dayNumber ?? 0) + 1;
+  if (dayNumber > 7) return { error: "Plans are limited to seven training days per week." };
+  await db.transaction(async (tx) => {
+    await tx.insert(planWorkouts).values({ planId: parsed.data.planId, dayNumber, title: parsed.data.title, focus: parsed.data.focus });
+    await tx.update(plans).set({ daysPerWeek: dayNumber, updatedAt: new Date() }).where(eq(plans.id, parsed.data.planId));
+  });
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  return { success: `Day ${dayNumber} added.`, successId: crypto.randomUUID() };
+}
+
+export async function removeExercise(formData: FormData) {
+  const currentUser = await requireUser();
+  const planExerciseId = z.string().uuid().parse(formData.get("planExerciseId"));
+  const owned = await db.select({ id: planExercises.id }).from(planExercises)
+    .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(planExercises.id, planExerciseId), eq(planExercises.isActive, true), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) throw new Error("Exercise not found in your active plan.");
+  await db.update(planExercises).set({ isActive: false }).where(eq(planExercises.id, planExerciseId));
+  revalidatePath("/app/plan");
+}
+
 export async function startWorkout(formData: FormData) {
   const currentUser = await requireUser();
   const workoutId = z.string().uuid().parse(formData.get("workoutId"));
@@ -293,7 +331,31 @@ export async function startWorkout(formData: FormData) {
     .where(and(eq(planWorkouts.id, workoutId), eq(plans.userId, currentUser.id), eq(plans.status, "active")))
     .limit(1);
   if (!owned[0]) throw new Error("Workout not found.");
-  const [session] = await db.insert(workoutSessions).values({ userId: currentUser.id, planWorkoutId: workoutId }).returning();
+  const session = await db.transaction(async (tx) => {
+    const prescription = await tx.select({
+      planExerciseId: planExercises.id,
+      exerciseId: planExercises.exerciseId,
+      exerciseName: exercises.name,
+      exerciseSlug: exercises.slug,
+      equipment: exercises.equipment,
+      sortOrder: planExercises.sortOrder,
+      sets: planExercises.sets,
+      repMin: planExercises.repMin,
+      repMax: planExercises.repMax,
+      restSeconds: planExercises.restSeconds,
+      targetRir: planExercises.targetRir,
+      programmingNotes: planExercises.notes,
+      userNotes: planExercises.userNotes,
+      videoUrl: planExercises.videoUrlOverride,
+    }).from(planExercises)
+      .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
+      .where(and(eq(planExercises.workoutId, workoutId), eq(planExercises.isActive, true)))
+      .orderBy(planExercises.sortOrder);
+    if (prescription.length === 0) throw new Error("Add at least one exercise before starting this workout.");
+    const [created] = await tx.insert(workoutSessions).values({ userId: currentUser.id, planWorkoutId: workoutId }).returning();
+    await tx.insert(workoutSessionExercises).values(prescription.map((exercise) => ({ sessionId: created.id, ...exercise })));
+    return created;
+  });
   redirect(`/app/workouts/${session.id}`);
 }
 
@@ -313,8 +375,8 @@ export async function logSet(formData: FormData) {
     where: and(eq(workoutSessions.id, data.sessionId), eq(workoutSessions.userId, currentUser.id)),
   });
   if (!owned || owned.completedAt) throw new Error("This workout session is not open.");
-  const belongsToWorkout = await db.query.planExercises.findFirst({
-    where: and(eq(planExercises.id, data.planExerciseId), eq(planExercises.workoutId, owned.planWorkoutId)),
+  const belongsToWorkout = await db.query.workoutSessionExercises.findFirst({
+    where: and(eq(workoutSessionExercises.sessionId, data.sessionId), eq(workoutSessionExercises.planExerciseId, data.planExerciseId)),
   });
   if (!belongsToWorkout) throw new Error("Exercise does not belong to this workout.");
   await db
@@ -336,6 +398,7 @@ export async function finishWorkout(formData: FormData) {
     .set({ completedAt: new Date(), perceivedEffort: effort, notes: String(formData.get("notes") ?? "") })
     .where(and(eq(workoutSessions.id, sessionId), eq(workoutSessions.userId, currentUser.id)));
   revalidatePath("/app");
+  revalidatePath("/app/progress");
   redirect("/app");
 }
 

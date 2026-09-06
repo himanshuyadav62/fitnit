@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -16,6 +16,7 @@ import {
   templateExercises,
   templateWorkouts,
   workoutSessions,
+  workoutSessionExercises,
 } from "@/db/schema";
 
 export type WorkoutExercise = {
@@ -199,7 +200,7 @@ export async function getActivePlan(userId: string) {
       videoUrlOverride: planExercises.videoUrlOverride,
     })
     .from(planWorkouts)
-    .leftJoin(planExercises, eq(planExercises.workoutId, planWorkouts.id))
+    .leftJoin(planExercises, and(eq(planExercises.workoutId, planWorkouts.id), eq(planExercises.isActive, true)))
     .leftJoin(exercises, eq(exercises.id, planExercises.exerciseId))
     .where(eq(planWorkouts.planId, plan.id))
     .orderBy(asc(planWorkouts.dayNumber), asc(planExercises.sortOrder));
@@ -256,25 +257,24 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
   const [exerciseRows, logs] = await Promise.all([
     db
       .select({
-        id: planExercises.id,
-        exerciseId: exercises.id,
-        slug: exercises.slug,
-        name: exercises.name,
-        equipment: exercises.equipment,
-        sortOrder: planExercises.sortOrder,
-        sets: planExercises.sets,
-        repMin: planExercises.repMin,
-        repMax: planExercises.repMax,
-        restSeconds: planExercises.restSeconds,
-        targetRir: planExercises.targetRir,
-        notes: planExercises.notes,
-        userNotes: planExercises.userNotes,
-        videoUrlOverride: planExercises.videoUrlOverride,
+        id: workoutSessionExercises.planExerciseId,
+        exerciseId: workoutSessionExercises.exerciseId,
+        slug: workoutSessionExercises.exerciseSlug,
+        name: workoutSessionExercises.exerciseName,
+        equipment: workoutSessionExercises.equipment,
+        sortOrder: workoutSessionExercises.sortOrder,
+        sets: workoutSessionExercises.sets,
+        repMin: workoutSessionExercises.repMin,
+        repMax: workoutSessionExercises.repMax,
+        restSeconds: workoutSessionExercises.restSeconds,
+        targetRir: workoutSessionExercises.targetRir,
+        notes: workoutSessionExercises.programmingNotes,
+        userNotes: workoutSessionExercises.userNotes,
+        videoUrlOverride: workoutSessionExercises.videoUrl,
       })
-      .from(planExercises)
-      .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
-      .where(eq(planExercises.workoutId, sessionRow[0].workoutId))
-      .orderBy(asc(planExercises.sortOrder)),
+      .from(workoutSessionExercises)
+      .where(eq(workoutSessionExercises.sessionId, sessionId))
+      .orderBy(asc(workoutSessionExercises.sortOrder)),
     db.select().from(setLogs).where(eq(setLogs.sessionId, sessionId)),
   ]);
   return { ...sessionRow[0], exercises: exerciseRows, logs };
@@ -299,6 +299,69 @@ export async function getActivePlanExercise(userId: string, slug: string, planEx
     .where(and(eq(plans.userId, userId), eq(plans.status, "active"), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export async function getTrainingAnalytics(userId: string) {
+  const sessionRowsPromise = db
+    .select({
+      id: workoutSessions.id,
+      startedAt: workoutSessions.startedAt,
+      completedAt: workoutSessions.completedAt,
+      title: planWorkouts.title,
+      planDay: planWorkouts.dayNumber,
+      effort: workoutSessions.perceivedEffort,
+      totalSets: sql<number>`count(${setLogs.id})::int`,
+      totalReps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
+      volumeKg: sql<string>`coalesce(sum(${setLogs.weightKg} * ${setLogs.reps}), 0)::text`,
+      maxWeightKg: sql<string>`coalesce(max(${setLogs.weightKg}), 0)::text`,
+      durationMinutes: sql<number>`greatest(1, round(extract(epoch from (${workoutSessions.completedAt} - ${workoutSessions.startedAt})) / 60))::int`,
+    })
+    .from(workoutSessions)
+    .innerJoin(planWorkouts, eq(planWorkouts.id, workoutSessions.planWorkoutId))
+    .leftJoin(setLogs, eq(setLogs.sessionId, workoutSessions.id))
+    .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt)))
+    .groupBy(workoutSessions.id, planWorkouts.title, planWorkouts.dayNumber)
+    .orderBy(desc(workoutSessions.startedAt))
+    .limit(60);
+
+  const exerciseTotalsPromise = db
+    .select({
+      exerciseId: workoutSessionExercises.exerciseId,
+      name: workoutSessionExercises.exerciseName,
+      sessions: sql<number>`count(distinct ${workoutSessions.id})::int`,
+      totalSets: sql<number>`count(${setLogs.id})::int`,
+      totalReps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
+      volumeKg: sql<string>`coalesce(sum(${setLogs.weightKg} * ${setLogs.reps}), 0)::text`,
+      maxWeightKg: sql<string>`coalesce(max(${setLogs.weightKg}), 0)::text`,
+    })
+    .from(workoutSessions)
+    .innerJoin(workoutSessionExercises, eq(workoutSessionExercises.sessionId, workoutSessions.id))
+    .leftJoin(setLogs, and(eq(setLogs.sessionId, workoutSessionExercises.sessionId), eq(setLogs.planExerciseId, workoutSessionExercises.planExerciseId)))
+    .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt)))
+    .groupBy(workoutSessionExercises.exerciseId, workoutSessionExercises.exerciseName)
+    .orderBy(desc(sql`coalesce(sum(${setLogs.weightKg} * ${setLogs.reps}), 0)`))
+    .limit(10);
+
+  const [sessions, exerciseTotals] = await Promise.all([sessionRowsPromise, exerciseTotalsPromise]);
+  const recentSessionIds = sessions.slice(0, 8).map((session) => session.id);
+  const recentExercises = recentSessionIds.length === 0 ? [] : await db
+    .select({
+      sessionId: workoutSessionExercises.sessionId,
+      planExerciseId: workoutSessionExercises.planExerciseId,
+      name: workoutSessionExercises.exerciseName,
+      sortOrder: workoutSessionExercises.sortOrder,
+      sets: sql<number>`count(${setLogs.id})::int`,
+      reps: sql<number>`coalesce(sum(${setLogs.reps}), 0)::int`,
+      maxWeightKg: sql<string>`coalesce(max(${setLogs.weightKg}), 0)::text`,
+      volumeKg: sql<string>`coalesce(sum(${setLogs.weightKg} * ${setLogs.reps}), 0)::text`,
+    })
+    .from(workoutSessionExercises)
+    .leftJoin(setLogs, and(eq(setLogs.sessionId, workoutSessionExercises.sessionId), eq(setLogs.planExerciseId, workoutSessionExercises.planExerciseId)))
+    .where(inArray(workoutSessionExercises.sessionId, recentSessionIds))
+    .groupBy(workoutSessionExercises.sessionId, workoutSessionExercises.planExerciseId, workoutSessionExercises.exerciseName, workoutSessionExercises.sortOrder)
+    .orderBy(desc(workoutSessionExercises.sessionId), asc(workoutSessionExercises.sortOrder));
+
+  return { sessions, exerciseTotals, recentExercises };
 }
 
 export async function getProgress(userId: string) {
