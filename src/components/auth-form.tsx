@@ -18,20 +18,24 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
-    const data = new FormData(event.currentTarget);
-    const email = String(data.get("email"));
-    const password = String(data.get("password"));
-    const result =
-      mode === "sign-up"
-        ? await authClient.signUp.email({ name: String(data.get("name")), email, password })
-        : await authClient.signIn.email({ email, password });
-    setPending(false);
-    if (result.error) {
-      toast.error(result.error.message ?? "Authentication failed");
-      return;
+    try {
+      const data = new FormData(event.currentTarget);
+      const email = String(data.get("email"));
+      const password = String(data.get("password"));
+      const result =
+        mode === "sign-up"
+          ? await authClient.signUp.email({ name: String(data.get("name")), email, password })
+          : await authClient.signIn.email({ email, password });
+      if (result.error) {
+        setPending(false);
+        toast.error(result.error.message ?? "Authentication failed");
+        return;
+      }
+      router.push(mode === "sign-up" ? "/app/onboarding" : "/app");
+    } catch {
+      setPending(false);
+      toast.error("Could not reach the server. Please try again.");
     }
-    router.push(mode === "sign-up" ? "/app/onboarding" : "/app");
-    router.refresh();
   }
 
   return (
@@ -51,9 +55,9 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
         <Input id="password" name="password" type="password" minLength={8} autoComplete={mode === "sign-up" ? "new-password" : "current-password"} required />
         {mode === "sign-up" && <p className="text-xs text-muted-foreground">Use at least 8 characters.</p>}
       </div>
-      <Button className="w-full" size="lg" disabled={pending}>
+      <Button className="w-full" size="lg" disabled={pending} aria-busy={pending}>
         {pending && <LoaderCircle className="animate-spin" />}
-        {mode === "sign-up" ? "Create account" : "Sign in"}
+        {pending ? (mode === "sign-up" ? "Creating account…" : "Signing in…") : (mode === "sign-up" ? "Create account" : "Sign in")}
       </Button>
       <p className="text-center text-sm text-muted-foreground">
         {mode === "sign-up" ? "Already have an account? " : "New to Forme? "}

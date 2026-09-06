@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -54,47 +54,59 @@ async function cloneFeaturedPlan(userId: string, daysPerWeek: number, goal: "bui
     .from(templateWorkouts)
     .where(eq(templateWorkouts.templateId, template.id))
     .orderBy(templateWorkouts.dayNumber);
+  if (sourceWorkouts.length === 0) throw new Error("The starter plan has no workouts.");
 
-  await db.update(plans).set({ status: "archived", updatedAt: new Date() }).where(and(eq(plans.userId, userId), eq(plans.status, "active")));
-  const [plan] = await db
-    .insert(plans)
-    .values({
-      userId,
-      sourceTemplateId: template.id,
-      name: daysPerWeek === 3 ? template.title : `Personal Foundation — ${daysPerWeek} Days`,
-      goal,
-      daysPerWeek,
-      durationWeeks: 8,
-    })
-    .returning();
+  const selected = Array.from({ length: daysPerWeek }, (_, index) => ({
+    source: sourceWorkouts[index % sourceWorkouts.length],
+    dayNumber: index + 1,
+  }));
+  const sourceItems = await db
+    .select()
+    .from(templateExercises)
+    .where(inArray(templateExercises.workoutId, [...new Set(selected.map(({ source }) => source.id))]));
 
-  const selected = Array.from({ length: daysPerWeek }, (_, index) => sourceWorkouts[index % sourceWorkouts.length]);
-  for (const [index, source] of selected.entries()) {
-    const [workout] = await db
-      .insert(planWorkouts)
+  return db.transaction(async (tx) => {
+    await tx.update(plans).set({ status: "archived", updatedAt: new Date() }).where(and(eq(plans.userId, userId), eq(plans.status, "active")));
+    const [plan] = await tx
+      .insert(plans)
       .values({
-        planId: plan.id,
-        dayNumber: index + 1,
-        title: index < sourceWorkouts.length ? source.title : "Foundation D",
-        focus: index < sourceWorkouts.length ? source.focus : "Technique, easy volume and recovery",
+        userId,
+        sourceTemplateId: template.id,
+        name: daysPerWeek === 3 ? template.title : `Personal Foundation — ${daysPerWeek} Days`,
+        goal,
+        daysPerWeek,
+        durationWeeks: 8,
       })
       .returning();
-    const items = await db.select().from(templateExercises).where(eq(templateExercises.workoutId, source.id));
-    await db.insert(planExercises).values(
-      items.map((item) => ({
-        workoutId: workout.id,
-        exerciseId: item.exerciseId,
-        sortOrder: item.sortOrder,
-        sets: index >= 3 ? Math.max(2, item.sets - 1) : item.sets,
-        repMin: item.repMin,
-        repMax: item.repMax,
-        restSeconds: item.restSeconds,
-        targetRir: index >= 3 ? 3 : item.targetRir,
-        notes: index >= 3 ? "Keep this optional day easy and technique-focused." : item.notes,
-      })),
-    );
-  }
-  return plan;
+    const createdWorkouts = await tx
+      .insert(planWorkouts)
+      .values(selected.map(({ source, dayNumber }) => ({
+          planId: plan.id,
+          dayNumber,
+          title: dayNumber <= sourceWorkouts.length ? source.title : "Foundation D",
+          focus: dayNumber <= sourceWorkouts.length ? source.focus : "Technique, easy volume and recovery",
+        })))
+      .returning();
+    const exerciseValues = createdWorkouts.flatMap((workout) => {
+      const selectedDay = selected[workout.dayNumber - 1];
+      const isOptionalDay = workout.dayNumber > sourceWorkouts.length;
+      return sourceItems
+        .filter((item) => item.workoutId === selectedDay.source.id)
+        .map((item) => ({
+          workoutId: workout.id,
+          exerciseId: item.exerciseId,
+          sortOrder: item.sortOrder,
+          sets: isOptionalDay ? Math.max(2, item.sets - 1) : item.sets,
+          repMin: item.repMin,
+          repMax: item.repMax,
+          restSeconds: item.restSeconds,
+          targetRir: isOptionalDay ? 3 : item.targetRir,
+          notes: isOptionalDay ? "Keep this optional day easy and technique-focused." : item.notes,
+        }));
+    });
+    if (exerciseValues.length > 0) await tx.insert(planExercises).values(exerciseValues);
+    return plan;
+  });
 }
 
 export async function completeOnboarding(_state: ActionState, formData: FormData): Promise<ActionState> {
