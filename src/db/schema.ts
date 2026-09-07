@@ -256,9 +256,10 @@ export const planWorkouts = pgTable(
     title: text("title").notNull(),
     focus: text("focus").notNull(),
     label: text("label"),
+    isActive: boolean("is_active").default(true).notNull(),
   },
   (table) => [
-    uniqueIndex("plan_workout_day_idx").on(table.planId, table.dayNumber),
+    uniqueIndex("plan_workout_day_idx").on(table.planId, table.dayNumber).where(sql`${table.isActive} = true`),
     index("plan_workout_plan_idx").on(table.planId),
   ],
 );

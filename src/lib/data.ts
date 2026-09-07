@@ -218,7 +218,7 @@ export async function getActivePlan(userId: string) {
     .from(planWorkouts)
     .leftJoin(planExercises, and(eq(planExercises.workoutId, planWorkouts.id), eq(planExercises.isActive, true)))
     .leftJoin(exercises, eq(exercises.id, planExercises.exerciseId))
-    .where(eq(planWorkouts.planId, plan.id))
+    .where(and(eq(planWorkouts.planId, plan.id), eq(planWorkouts.isActive, true)))
     .orderBy(asc(planWorkouts.dayNumber), asc(planExercises.sortOrder));
   return { ...plan, workouts: groupWorkouts(rows) };
 }
@@ -239,7 +239,7 @@ export async function getUserPlans(userId: string) {
       updatedAt: plans.updatedAt,
     })
     .from(plans)
-    .leftJoin(planWorkouts, eq(planWorkouts.planId, plans.id))
+    .leftJoin(planWorkouts, and(eq(planWorkouts.planId, plans.id), eq(planWorkouts.isActive, true)))
     .leftJoin(planExercises, eq(planExercises.workoutId, planWorkouts.id))
     .where(and(eq(plans.userId, userId), eq(plans.status, "active")))
     .groupBy(plans.id)
@@ -339,7 +339,7 @@ export async function getActivePlanExercise(userId: string, slug: string, planEx
     .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
     .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(plans.userId, userId), eq(plans.isCurrent, true), eq(plans.status, "active"), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
+    .where(and(eq(plans.userId, userId), eq(plans.isCurrent, true), eq(plans.status, "active"), eq(planWorkouts.isActive, true), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
     .limit(1);
   return rows[0] ?? null;
 }

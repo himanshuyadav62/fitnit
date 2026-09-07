@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -297,7 +297,7 @@ export async function addExerciseToWorkout(_state: ActionState, formData: FormDa
   if (data.videoUrlOverride && !getSafeEmbedUrl(data.videoUrlOverride)) return { error: "Use a valid YouTube or Vimeo video URL." };
   const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planWorkouts.id, data.workoutId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
+    .where(and(eq(planWorkouts.id, data.workoutId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Workout not found." };
   const availableExercise = await db.select({ id: exercises.id }).from(exercises)
     .where(and(eq(exercises.id, data.exerciseId), or(isNull(exercises.createdByUserId), eq(exercises.createdByUserId, currentUser.id)))).limit(1);
@@ -357,7 +357,7 @@ export async function addCustomExerciseToWorkout(_state: ActionState, formData: 
   if (primaryMuscles.length === 0 || instructions.length === 0 || cues.length === 0) return { error: "Add at least one muscle, instruction, and technique cue." };
   const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planWorkouts.id, data.workoutId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
+    .where(and(eq(planWorkouts.id, data.workoutId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Workout not found." };
 
   await db.transaction(async (tx) => {
@@ -406,7 +406,7 @@ export async function updateExerciseDetails(_state: ActionState, formData: FormD
   const owned = await db.select({ id: planExercises.id }).from(planExercises)
     .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planExercises.id, data.planExerciseId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
+    .where(and(eq(planExercises.id, data.planExerciseId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Exercise not found in your active plan." };
   await db.update(planExercises).set({ userNotes: data.userNotes || null, videoUrlOverride: data.videoUrlOverride || null, label: data.label || null }).where(eq(planExercises.id, data.planExerciseId));
   revalidatePath("/app/plan");
@@ -427,7 +427,7 @@ export async function addWorkoutDay(_state: ActionState, formData: FormData): Pr
     .where(and(eq(plans.id, parsed.data.planId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Active plan not found." };
   const last = await db.select({ dayNumber: planWorkouts.dayNumber }).from(planWorkouts)
-    .where(eq(planWorkouts.planId, parsed.data.planId)).orderBy(desc(planWorkouts.dayNumber)).limit(1);
+    .where(and(eq(planWorkouts.planId, parsed.data.planId), eq(planWorkouts.isActive, true))).orderBy(desc(planWorkouts.dayNumber)).limit(1);
   const dayNumber = (last[0]?.dayNumber ?? 0) + 1;
   if (dayNumber > 7) return { error: "Plans are limited to seven training days per week." };
   await db.transaction(async (tx) => {
@@ -450,12 +450,59 @@ export async function updateWorkoutDay(_state: ActionState, formData: FormData):
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the day details." };
   const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planWorkouts.id, parsed.data.workoutId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
+    .where(and(eq(planWorkouts.id, parsed.data.workoutId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Training day not found." };
   await db.update(planWorkouts).set({ title: parsed.data.title, focus: parsed.data.focus, label: parsed.data.label || null }).where(eq(planWorkouts.id, parsed.data.workoutId));
   revalidatePath("/app");
   revalidatePath("/app/plan");
   return { success: "Training day updated.", successId: crypto.randomUUID() };
+}
+
+export async function deleteWorkoutDay(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = z.object({ workoutId: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Choose a valid training day." };
+
+  const result = await db.transaction(async (tx) => {
+    const [owned] = await tx
+      .select({ id: planWorkouts.id, planId: plans.id, title: planWorkouts.title })
+      .from(planWorkouts)
+      .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+      .where(and(
+        eq(planWorkouts.id, parsed.data.workoutId),
+        eq(planWorkouts.isActive, true),
+        eq(plans.userId, currentUser.id),
+        eq(plans.isCurrent, true),
+        eq(plans.status, "active"),
+      ))
+      .for("update")
+      .limit(1);
+    if (!owned) return { error: "Training day not found." };
+
+    const activeDays = await tx
+      .select({ id: planWorkouts.id, dayNumber: planWorkouts.dayNumber })
+      .from(planWorkouts)
+      .where(and(eq(planWorkouts.planId, owned.planId), eq(planWorkouts.isActive, true)))
+      .orderBy(asc(planWorkouts.dayNumber));
+    if (activeDays.length <= 1) return { error: "A plan must keep at least one training day." };
+
+    await tx.update(planWorkouts).set({ isActive: false }).where(eq(planWorkouts.id, owned.id));
+    const remainingDays = activeDays.filter((day) => day.id !== owned.id);
+    for (const [index, day] of remainingDays.entries()) {
+      const nextDayNumber = index + 1;
+      if (day.dayNumber !== nextDayNumber) {
+        await tx.update(planWorkouts).set({ dayNumber: nextDayNumber }).where(eq(planWorkouts.id, day.id));
+      }
+    }
+    await tx.update(plans).set({ daysPerWeek: remainingDays.length, updatedAt: new Date() }).where(eq(plans.id, owned.planId));
+    return { success: `${owned.title} removed. Remaining days were renumbered.`, successId: crypto.randomUUID() };
+  });
+
+  if (result.error) return result;
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plans");
+  return result;
 }
 
 export async function removeExercise(formData: FormData) {
@@ -464,7 +511,7 @@ export async function removeExercise(formData: FormData) {
   const owned = await db.select({ id: planExercises.id }).from(planExercises)
     .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planExercises.id, planExerciseId), eq(planExercises.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
+    .where(and(eq(planExercises.id, planExerciseId), eq(planExercises.isActive, true), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) throw new Error("Exercise not found in your active plan.");
   await db.update(planExercises).set({ isActive: false }).where(eq(planExercises.id, planExerciseId));
   revalidatePath("/app/plan");
@@ -477,7 +524,7 @@ export async function startWorkout(formData: FormData) {
     .select({ id: planWorkouts.id })
     .from(planWorkouts)
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(planWorkouts.id, workoutId), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active")))
+    .where(and(eq(planWorkouts.id, workoutId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active")))
     .limit(1);
   if (!owned[0]) throw new Error("Workout not found.");
   const session = await db.transaction(async (tx) => {

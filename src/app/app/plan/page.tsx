@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, Clock3, Copy, Dumbbell, NotebookPen } from "lucid
 import { cloneStarterPlan, startWorkout } from "@/app/actions";
 import { AddExerciseDialog } from "@/components/add-exercise-dialog";
 import { AddWorkoutDayDialog } from "@/components/add-workout-day-dialog";
+import { DeleteWorkoutDayButton } from "@/components/delete-workout-day-button";
 import { ExerciseDetailsDialog } from "@/components/exercise-details-dialog";
 import { PlanDetailsDialog } from "@/components/plan-details-dialog";
 import { PlanSwitcher } from "@/components/plan-switcher";
@@ -33,7 +34,7 @@ export default async function PlanPage() {
     <div className="flex flex-wrap gap-2"><AddWorkoutDayDialog planId={plan.id} disabled={plan.workouts.length >= 7} /><PlanDetailsDialog id={plan.id} name={plan.name} goal={plan.goal} durationWeeks={plan.durationWeeks} /><Button variant="outline" asChild><Link href="/app/plans"><BookOpen /> Browse plans</Link></Button><form action={cloneStarterPlan}><SubmitButton variant="outline" pendingLabel="Creating plan…"><Copy /> Add recommendation</SubmitButton></form></div>
 
     <div className="grid gap-6 lg:grid-cols-2">{plan.workouts.map((workout) => <Card key={workout.id} className="border-white/8">
-      <CardHeader><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Day {workout.dayNumber}</Badge>{workout.label && <Badge variant="secondary">{workout.label}</Badge>}</div><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><div className="flex items-center gap-1"><WorkoutDayDetailsDialog id={workout.id} title={workout.title} focus={workout.focus} label={workout.label} /><Dumbbell className="size-5 text-primary" /></div></div></CardHeader>
+      <CardHeader><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Day {workout.dayNumber}</Badge>{workout.label && <Badge variant="secondary">{workout.label}</Badge>}</div><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><div className="flex items-center gap-1"><WorkoutDayDetailsDialog id={workout.id} title={workout.title} focus={workout.focus} label={workout.label} /><DeleteWorkoutDayButton id={workout.id} title={workout.title} exerciseCount={workout.exercises.length} disabled={plan.workouts.length <= 1} /><Dumbbell className="size-5 text-primary" /></div></div></CardHeader>
       <CardContent>
         <div className="space-y-2">{workout.exercises.map((exercise) => <div key={exercise.id} className="group flex items-center gap-2 rounded-lg border bg-muted/15 p-3 transition-colors hover:border-primary/30">
           <Link href={`/app/exercises/${exercise.slug}?item=${exercise.id}`} className="flex min-w-0 flex-1 items-center justify-between gap-4">

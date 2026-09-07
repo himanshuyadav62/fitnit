@@ -48,17 +48,29 @@ try {
   assert(planWorkspace.ok, `Plan workspace returned ${planWorkspace.status}`);
   const planWorkspaceHtml = await planWorkspace.text();
   assert(planWorkspaceHtml.includes("Runtime strength plan") && planWorkspaceHtml.includes("Runtime fitness plan"), "Plan workspace did not render both saved plans");
-  const [workout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 1, 'Runtime strength', 'Runtime analytics verification') returning id`;
+  const [workout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 1, 'Deleted history day', 'Runtime analytics verification') returning id`;
+  const [remainingWorkout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 2, 'Remaining live day', 'Runtime deletion verification') returning id`;
   const [planExercise] = await sql`insert into plan_exercises (workout_id, exercise_id, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workout.id}, ${exercise.id}, 1, 1, 8, 12, 90, 2) returning id`;
   const [workoutSession] = await sql`insert into workout_sessions (user_id, plan_workout_id, started_at, completed_at, perceived_effort) values (${userId}, ${workout.id}, now() - interval '35 minutes', now(), 7) returning id`;
   await sql`insert into workout_session_exercises (session_id, plan_exercise_id, exercise_id, exercise_name, exercise_slug, equipment, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workoutSession.id}, ${planExercise.id}, ${exercise.id}, ${exercise.name}, ${exercise.slug}, ${exercise.equipment}, 1, 1, 8, 12, 90, 2)`;
   await sql`insert into set_logs (session_id, plan_exercise_id, set_number, reps, weight_kg, rir) values (${workoutSession.id}, ${planExercise.id}, 1, 10, 20, 2)`;
+  await sql.begin(async (transaction) => {
+    await transaction`update plan_workouts set is_active = false where id = ${workout.id}`;
+    await transaction`update plan_workouts set day_number = 1 where id = ${remainingWorkout.id}`;
+    await transaction`update plans set days_per_week = 1 where id = ${plan.id}`;
+  });
+
+  const livePlan = await fetch(`${baseUrl}/app/plan`, { headers: { cookie } });
+  assert(livePlan.ok, `Live plan returned ${livePlan.status}`);
+  const livePlanHtml = await livePlan.text();
+  assert(livePlanHtml.includes("Remaining live day") && !livePlanHtml.includes("Deleted history day"), "Deleted day should leave the live schedule while remaining days stay visible");
 
   const analytics = await fetch(`${baseUrl}/app/progress`, { headers: { cookie } });
   assert(analytics.ok, `Analytics returned ${analytics.status}`);
   const analyticsHtml = await analytics.text();
   assert(analyticsHtml.includes("Analytics &amp; progress"), "Analytics page did not render");
   assert(analyticsHtml.includes(exercise.name), "Analytics did not include the logged exercise");
+  assert(analyticsHtml.includes("Deleted history day"), "Deleting a day should preserve its completed workout history");
 
   const coach = await fetch(`${baseUrl}/api/coach`, {
     method: "POST",
@@ -69,7 +81,7 @@ try {
   const coachBody = await coach.json();
   assert(coachBody.message?.content?.includes("double progression"), "Coach response shape or content was unexpected");
 
-  console.log("Runtime verification passed: starter plan → sign-up → multiple plans → workout snapshot → analytics → coach → Postgres.");
+  console.log("Runtime verification passed: starter plan → sign-up → multiple plans → day deletion → preserved analytics → coach → Postgres.");
 } finally {
   await sql`delete from "user" where email = ${email}`;
   await sql.end();
