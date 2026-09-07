@@ -132,18 +132,23 @@ export const profiles = pgTable("profiles", {
   ...timestamps,
 });
 
-export const exercises = pgTable("exercises", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  slug: text("slug").notNull().unique(),
-  name: text("name").notNull(),
-  movementPattern: text("movement_pattern").notNull(),
-  primaryMuscles: text("primary_muscles").array().notNull(),
-  equipment: text("equipment").notNull(),
-  instructions: text("instructions").array().notNull(),
-  cues: text("cues").array().notNull(),
-  videoUrl: text("video_url"),
-  ...timestamps,
-});
+export const exercises = pgTable(
+  "exercises",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    slug: text("slug").notNull().unique(),
+    name: text("name").notNull(),
+    movementPattern: text("movement_pattern").notNull(),
+    primaryMuscles: text("primary_muscles").array().notNull(),
+    equipment: text("equipment").notNull(),
+    instructions: text("instructions").array().notNull(),
+    cues: text("cues").array().notNull(),
+    videoUrl: text("video_url"),
+    createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "cascade" }),
+    ...timestamps,
+  },
+  (table) => [index("exercise_created_by_user_idx").on(table.createdByUserId)],
+);
 
 export const exerciseSubstitutions = pgTable(
   "exercise_substitutions",

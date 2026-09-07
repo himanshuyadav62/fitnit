@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -171,10 +171,18 @@ export async function getTemplateBySlug(slug: string) {
   return { ...template, workouts: groupWorkouts(rows) };
 }
 
-export async function getExerciseLibrary() {
+export async function getExerciseLibrary(userId: string) {
   return db
-    .select({ id: exercises.id, slug: exercises.slug, name: exercises.name, equipment: exercises.equipment, movementPattern: exercises.movementPattern })
+    .select({
+      id: exercises.id,
+      slug: exercises.slug,
+      name: exercises.name,
+      equipment: exercises.equipment,
+      movementPattern: exercises.movementPattern,
+      isCustom: sql<boolean>`${exercises.createdByUserId} is not null`,
+    })
     .from(exercises)
+    .where(or(isNull(exercises.createdByUserId), eq(exercises.createdByUserId, userId)))
     .orderBy(asc(exercises.name));
 }
 
@@ -289,8 +297,10 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
   return { ...sessionRow[0], exercises: exerciseRows, logs };
 }
 
-export async function getExercise(slug: string) {
-  return db.query.exercises.findFirst({ where: eq(exercises.slug, slug) });
+export async function getExercise(userId: string, slug: string) {
+  return db.query.exercises.findFirst({
+    where: and(eq(exercises.slug, slug), or(isNull(exercises.createdByUserId), eq(exercises.createdByUserId, userId))),
+  });
 }
 
 export async function getActivePlanExercise(userId: string, slug: string, planExerciseId?: string) {

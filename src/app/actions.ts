@@ -1,6 +1,6 @@
 "use server";
 
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -246,6 +246,9 @@ export async function addExerciseToWorkout(_state: ActionState, formData: FormDa
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
     .where(and(eq(planWorkouts.id, data.workoutId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
   if (!owned[0]) return { error: "Workout not found." };
+  const availableExercise = await db.select({ id: exercises.id }).from(exercises)
+    .where(and(eq(exercises.id, data.exerciseId), or(isNull(exercises.createdByUserId), eq(exercises.createdByUserId, currentUser.id)))).limit(1);
+  if (!availableExercise[0]) return { error: "Exercise is not available in your library." };
   const last = await db.select({ sortOrder: planExercises.sortOrder }).from(planExercises)
     .where(eq(planExercises.workoutId, data.workoutId)).orderBy(desc(planExercises.sortOrder)).limit(1);
   await db.insert(planExercises).values({
@@ -263,6 +266,76 @@ export async function addExerciseToWorkout(_state: ActionState, formData: FormDa
   });
   revalidatePath("/app/plan");
   return { success: "Exercise added to the workout.", successId: crypto.randomUUID() };
+}
+
+const customExerciseSchema = z.object({
+  workoutId: z.string().uuid(),
+  name: z.string().trim().min(2).max(80),
+  movementPattern: z.string().trim().min(2).max(60),
+  primaryMuscles: z.string().trim().min(2).max(200),
+  equipment: z.string().trim().min(2).max(100),
+  instructions: z.string().trim().min(5).max(1500),
+  cues: z.string().trim().min(2).max(1000),
+  videoUrl: z.string().trim().max(500).optional(),
+  sets: z.coerce.number().int().min(1).max(10),
+  repMin: z.coerce.number().int().min(1).max(100),
+  repMax: z.coerce.number().int().min(1).max(100),
+  restSeconds: z.coerce.number().int().min(15).max(600),
+  targetRir: z.coerce.number().int().min(0).max(5),
+  userNotes: z.string().max(1000).optional(),
+  label: z.string().trim().max(32).optional(),
+});
+
+function customExerciseSlug(name: string) {
+  const base = name.normalize("NFKD").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "custom-exercise";
+  return `${base}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+export async function addCustomExerciseToWorkout(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = customExerciseSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Check the custom exercise details." };
+  const data = parsed.data;
+  if (data.repMin > data.repMax) return { error: "The minimum reps cannot exceed the maximum reps." };
+  if (data.videoUrl && !getSafeEmbedUrl(data.videoUrl)) return { error: "Use a valid YouTube or Vimeo video URL." };
+  const primaryMuscles = [...new Set(data.primaryMuscles.split(",").map((value) => value.trim()).filter(Boolean))].slice(0, 10);
+  const instructions = data.instructions.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12);
+  const cues = data.cues.split(/\r?\n/).map((value) => value.trim()).filter(Boolean).slice(0, 12);
+  if (primaryMuscles.length === 0 || instructions.length === 0 || cues.length === 0) return { error: "Add at least one muscle, instruction, and technique cue." };
+  const owned = await db.select({ id: planWorkouts.id }).from(planWorkouts)
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
+    .where(and(eq(planWorkouts.id, data.workoutId), eq(plans.userId, currentUser.id), eq(plans.status, "active"))).limit(1);
+  if (!owned[0]) return { error: "Workout not found." };
+
+  await db.transaction(async (tx) => {
+    const [customExercise] = await tx.insert(exercises).values({
+      slug: customExerciseSlug(data.name),
+      name: data.name,
+      movementPattern: data.movementPattern,
+      primaryMuscles,
+      equipment: data.equipment,
+      instructions,
+      cues,
+      videoUrl: data.videoUrl || null,
+      createdByUserId: currentUser.id,
+    }).returning({ id: exercises.id });
+    const last = await tx.select({ sortOrder: planExercises.sortOrder }).from(planExercises)
+      .where(eq(planExercises.workoutId, data.workoutId)).orderBy(desc(planExercises.sortOrder)).limit(1);
+    await tx.insert(planExercises).values({
+      workoutId: data.workoutId,
+      exerciseId: customExercise.id,
+      sortOrder: (last[0]?.sortOrder ?? 0) + 1,
+      sets: data.sets,
+      repMin: data.repMin,
+      repMax: data.repMax,
+      restSeconds: data.restSeconds,
+      targetRir: data.targetRir,
+      userNotes: data.userNotes || null,
+      label: data.label || null,
+    });
+  });
+  revalidatePath("/app/plan");
+  return { success: "Custom exercise created and added.", successId: crypto.randomUUID() };
 }
 
 export async function updateExerciseDetails(_state: ActionState, formData: FormData): Promise<ActionState> {
@@ -369,7 +442,7 @@ export async function startWorkout(formData: FormData) {
       targetRir: planExercises.targetRir,
       programmingNotes: planExercises.notes,
       userNotes: planExercises.userNotes,
-      videoUrl: planExercises.videoUrlOverride,
+      videoUrl: sql<string | null>`coalesce(${planExercises.videoUrlOverride}, ${exercises.videoUrl})`,
       label: planExercises.label,
     }).from(planExercises)
       .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))

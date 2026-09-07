@@ -5,7 +5,7 @@ loadEnvConfig(process.cwd());
 
 type ExerciseSeed = {
   slug: string; name: string; movementPattern: string; primaryMuscles: string[]; equipment: string;
-  instructions: string[]; cues: string[];
+  instructions: string[]; cues: string[]; videoUrl?: string;
 };
 type ProgramExercise = readonly [string, number, number, number, number, number?, string?];
 type TemplateSeed = {
@@ -53,7 +53,52 @@ const rawExercises: Array<[string, string, string, string[], string, string[], s
   ["farmers-carry", "Farmer’s carry", "carry", ["grip", "core", "upper back"], "dumbbells", ["Stand tall with a weight in each hand.", "Walk with short controlled steps.", "Set the weights down safely."], ["Tall posture", "Quiet steps", "Breathe and brace"]],
   ["rowing-ergometer", "Rowing ergometer", "conditioning", ["legs", "back", "cardiovascular"], "rowing machine", ["Drive first with the legs while the arms stay long.", "Finish by drawing the handle toward the lower ribs.", "Recover arms, torso, then knees."], ["Legs then arms", "Smooth recovery", "Use conversational pace unless prescribed"]],
 ];
-const exerciseSeed: ExerciseSeed[] = rawExercises.map(([slug, name, movementPattern, primaryMuscles, equipment, instructions, cues]) => ({ slug, name, movementPattern, primaryMuscles, equipment, instructions, cues }));
+const curatedVideoUrls: Record<string, string> = {
+  "goblet-squat": "https://www.youtube.com/shorts/3gpXflqRiEc",
+  "barbell-back-squat": "https://www.youtube.com/shorts/rrJIyZGlK8c",
+  "dumbbell-bench-press": "https://www.youtube.com/shorts/O7ECGhZj_Hc",
+  "barbell-bench-press": "https://www.youtube.com/shorts/_FkbD0FhgVE",
+  "lat-pulldown": "https://www.youtube.com/shorts/y9C_xyBMgpw",
+  "pull-up": "https://www.youtube.com/shorts/ZPG8OsHKXLw",
+  "assisted-pull-up": "https://www.youtube.com/shorts/gx0RWT7WbmA",
+  "dumbbell-romanian-deadlift": "https://www.youtube.com/shorts/hQgFixeXdZo",
+  "barbell-deadlift": "https://www.youtube.com/shorts/AweC3UaM14o",
+  "kettlebell-deadlift": "https://www.youtube.com/shorts/l6gDwf3xC6s",
+  "seated-dumbbell-overhead-press": "https://www.youtube.com/shorts/qEwKCR5JCog",
+  "standing-barbell-overhead-press": "https://www.youtube.com/shorts/G2qpTG1Eh40",
+  "seated-cable-row": "https://www.youtube.com/shorts/xQNrFHEMhI4",
+  "barbell-row": "https://www.youtube.com/shorts/FWJR5Ve8bnQ",
+  "chest-supported-dumbbell-row": "https://www.youtube.com/shorts/nl2MnK1i504",
+  "rear-foot-elevated-split-squat": "https://www.youtube.com/shorts/vgn7bSXkgkA",
+  "walking-lunge": "https://www.youtube.com/shorts/L8fvypPrzzs",
+  "leg-press": "https://www.youtube.com/shorts/8EMbB0tCn7Q",
+  "seated-leg-curl": "https://www.youtube.com/shorts/Orxowest56U",
+  "leg-extension": "https://www.youtube.com/shorts/m0FOpMEgero",
+  "hip-thrust": "https://www.youtube.com/shorts/-1cAnwFNBLg",
+  "standing-calf-raise": "https://www.youtube.com/shorts/eMTy3qylqnE",
+  "incline-dumbbell-press": "https://www.youtube.com/shorts/IP4oeKh1Sd4",
+  "push-up": "https://www.youtube.com/shorts/UIcct-7b6oE",
+  "cable-chest-fly": "https://www.youtube.com/shorts/8wAvRidL0PQ",
+  "dumbbell-lateral-raise": "https://www.youtube.com/shorts/XPPfnSEATJA",
+  "face-pull": "https://www.youtube.com/shorts/V8dZ3pyiCBo",
+  "cable-triceps-pressdown": "https://www.youtube.com/shorts/2-LAMcpzODU",
+  "incline-dumbbell-curl": "https://www.youtube.com/shorts/soxrZlIl35U",
+  "front-plank": "https://www.youtube.com/shorts/pSHjTRCQxIw",
+  "dead-bug": "https://www.youtube.com/shorts/g_BYB0R-4Ws",
+  "cable-crunch": "https://www.youtube.com/shorts/ToJeyhydUxU",
+  "farmers-carry": "https://www.youtube.com/shorts/p5MNNosenJc",
+  "rowing-ergometer": "https://www.youtube.com/shorts/4zWu1yuJ0_g",
+};
+const exerciseSeed: ExerciseSeed[] = rawExercises.map(([slug, name, movementPattern, primaryMuscles, equipment, instructions, cues]) => ({
+  slug,
+  name,
+  movementPattern,
+  primaryMuscles,
+  equipment,
+  instructions,
+  cues,
+  videoUrl: curatedVideoUrls[slug],
+}));
 
 const templates: TemplateSeed[] = [
   {

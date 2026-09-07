@@ -14,6 +14,9 @@ function assert(condition, message) {
 }
 
 try {
+  const [videoCoverage] = await sql`select count(*)::int as total, count(video_url)::int as with_video from exercises where created_by_user_id is null`;
+  assert(videoCoverage.total > 0 && videoCoverage.with_video === videoCoverage.total, "Every built-in exercise should have a form video");
+
   const publicPage = await fetch(`${baseUrl}/plans/starter`);
   assert(publicPage.ok, `Starter plan returned ${publicPage.status}`);
   assert((await publicPage.text()).includes("Beginner Vegan Muscle Gain"), "Starter plan seed was not rendered");

@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Exercise guide" };
 export default async function ExercisePage({ params, searchParams }: { params: Promise<{ slug: string }>; searchParams: Promise<{ item?: string }> }) {
   const [{ slug }, query, user] = await Promise.all([params, searchParams, requireUser()]);
   const planExerciseId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(query.item ?? "") ? query.item : undefined;
-  const [exercise, planExercise] = await Promise.all([getExercise(slug), getActivePlanExercise(user.id, slug, planExerciseId)]);
+  const [exercise, planExercise] = await Promise.all([getExercise(user.id, slug), getActivePlanExercise(user.id, slug, planExerciseId)]);
   if (!exercise) notFound();
   const embedUrl = getSafeEmbedUrl(planExercise?.videoUrlOverride ?? exercise.videoUrl);
 

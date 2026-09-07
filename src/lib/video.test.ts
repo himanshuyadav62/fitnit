@@ -6,6 +6,7 @@ describe("getSafeEmbedUrl", () => {
   it("converts supported YouTube links to the privacy-enhanced player", () => {
     expect(getSafeEmbedUrl("https://youtu.be/dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
     expect(getSafeEmbedUrl("https://www.youtube.com/watch?v=dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
+    expect(getSafeEmbedUrl("https://www.youtube.com/shorts/dQw4w9WgXcQ")).toBe("https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ");
   });
 
   it("accepts Vimeo and rejects arbitrary iframe hosts", () => {

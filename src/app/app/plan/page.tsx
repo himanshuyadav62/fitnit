@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: "My plan" };
 
 export default async function PlanPage() {
   const user = await requireUser();
-  const [plan, profile, exerciseLibrary] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary()]);
+  const [plan, profile, exerciseLibrary] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary(user.id)]);
   if (!profile?.onboardingComplete) return <Empty title="Complete your assessment first" copy="Your schedule and readiness answers are needed before a private plan can be created." href="/app/onboarding" label="Complete assessment" />;
   if (!plan) return <Empty title="No active plan" copy="Choose a research-informed template from the plan library, then customize every workout." href="/app/plans" label="Explore plans" />;
 
