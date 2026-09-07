@@ -6,28 +6,31 @@ import { cloneStarterPlan, startWorkout } from "@/app/actions";
 import { AddExerciseDialog } from "@/components/add-exercise-dialog";
 import { AddWorkoutDayDialog } from "@/components/add-workout-day-dialog";
 import { ExerciseDetailsDialog } from "@/components/exercise-details-dialog";
+import { PlanDetailsDialog } from "@/components/plan-details-dialog";
+import { PlanSwitcher } from "@/components/plan-switcher";
 import { RemoveExerciseButton } from "@/components/remove-exercise-button";
 import { SubmitButton } from "@/components/submit-button";
 import { WorkoutDayDetailsDialog } from "@/components/workout-day-details-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getActivePlan, getExerciseLibrary, getProfile } from "@/lib/data";
+import { getActivePlan, getExerciseLibrary, getProfile, getUserPlans } from "@/lib/data";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "My plan" };
 
 export default async function PlanPage() {
   const user = await requireUser();
-  const [plan, profile, exerciseLibrary] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary(user.id)]);
+  const [plan, profile, exerciseLibrary, userPlans] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary(user.id), getUserPlans(user.id)]);
   if (!profile?.onboardingComplete) return <Empty title="Complete your assessment first" copy="Your schedule and readiness answers are needed before a private plan can be created." href="/app/onboarding" label="Complete assessment" />;
   if (!plan) return <Empty title="No active plan" copy="Choose a research-informed template from the plan library, then customize every workout." href="/app/plans" label="Explore plans" />;
 
   return <div className="space-y-8">
-    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-      <div><p className="text-sm font-medium text-primary">Private plan · {plan.durationWeeks} weeks</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{plan.name}</h1><p className="mt-2 text-sm text-muted-foreground">{plan.daysPerWeek} days per week · personalized notes and form videos stay with your plan</p></div>
-      <div className="flex flex-wrap gap-2"><AddWorkoutDayDialog planId={plan.id} disabled={plan.workouts.length >= 7} /><Button variant="outline" asChild><Link href="/app/plans"><BookOpen /> Browse plans</Link></Button><form action={cloneStarterPlan}><SubmitButton variant="outline" pendingLabel="Replacing plan…"><Copy /> Use recommendation</SubmitButton></form></div>
+    <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+      <div><p className="text-sm font-medium text-primary">Current plan · {plan.durationWeeks} weeks</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">{plan.name}</h1><p className="mt-2 text-sm text-muted-foreground">{plan.daysPerWeek} days per week · personalized notes and form videos stay with this plan</p></div>
+      <div className="space-y-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Switch plan</p><PlanSwitcher plans={userPlans.map(({ id, name, goal }) => ({ id, name, goal }))} currentPlanId={plan.id} /></div>
     </div>
+    <div className="flex flex-wrap gap-2"><AddWorkoutDayDialog planId={plan.id} disabled={plan.workouts.length >= 7} /><PlanDetailsDialog id={plan.id} name={plan.name} goal={plan.goal} durationWeeks={plan.durationWeeks} /><Button variant="outline" asChild><Link href="/app/plans"><BookOpen /> Browse plans</Link></Button><form action={cloneStarterPlan}><SubmitButton variant="outline" pendingLabel="Creating plan…"><Copy /> Add recommendation</SubmitButton></form></div>
 
     <div className="grid gap-6 lg:grid-cols-2">{plan.workouts.map((workout) => <Card key={workout.id} className="border-white/8">
       <CardHeader><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Day {workout.dayNumber}</Badge>{workout.label && <Badge variant="secondary">{workout.label}</Badge>}</div><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><div className="flex items-center gap-1"><WorkoutDayDetailsDialog id={workout.id} title={workout.title} focus={workout.focus} label={workout.label} /><Dumbbell className="size-5 text-primary" /></div></div></CardHeader>

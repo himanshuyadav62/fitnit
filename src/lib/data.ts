@@ -188,7 +188,7 @@ export async function getExerciseLibrary(userId: string) {
 
 export async function getActivePlan(userId: string) {
   const plan = await db.query.plans.findFirst({
-    where: and(eq(plans.userId, userId), eq(plans.status, "active")),
+    where: and(eq(plans.userId, userId), eq(plans.isCurrent, true), eq(plans.status, "active")),
     orderBy: desc(plans.createdAt),
   });
   if (!plan) return null;
@@ -221,6 +221,29 @@ export async function getActivePlan(userId: string) {
     .where(eq(planWorkouts.planId, plan.id))
     .orderBy(asc(planWorkouts.dayNumber), asc(planExercises.sortOrder));
   return { ...plan, workouts: groupWorkouts(rows) };
+}
+
+export async function getUserPlans(userId: string) {
+  return db
+    .select({
+      id: plans.id,
+      name: plans.name,
+      goal: plans.goal,
+      status: plans.status,
+      isCurrent: plans.isCurrent,
+      daysPerWeek: plans.daysPerWeek,
+      durationWeeks: plans.durationWeeks,
+      sourceTemplateId: plans.sourceTemplateId,
+      workoutCount: sql<number>`count(distinct ${planWorkouts.id})::int`,
+      exerciseCount: sql<number>`count(distinct ${planExercises.id}) filter (where ${planExercises.isActive} = true)::int`,
+      updatedAt: plans.updatedAt,
+    })
+    .from(plans)
+    .leftJoin(planWorkouts, eq(planWorkouts.planId, plans.id))
+    .leftJoin(planExercises, eq(planExercises.workoutId, planWorkouts.id))
+    .where(and(eq(plans.userId, userId), eq(plans.status, "active")))
+    .groupBy(plans.id)
+    .orderBy(desc(plans.isCurrent), desc(plans.updatedAt));
 }
 
 export async function getProfile(userId: string) {
@@ -316,7 +339,7 @@ export async function getActivePlanExercise(userId: string, slug: string, planEx
     .innerJoin(exercises, eq(exercises.id, planExercises.exerciseId))
     .innerJoin(planWorkouts, eq(planWorkouts.id, planExercises.workoutId))
     .innerJoin(plans, eq(plans.id, planWorkouts.planId))
-    .where(and(eq(plans.userId, userId), eq(plans.status, "active"), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
+    .where(and(eq(plans.userId, userId), eq(plans.isCurrent, true), eq(plans.status, "active"), eq(exercises.slug, slug), planExerciseId ? eq(planExercises.id, planExerciseId) : undefined))
     .limit(1);
   return rows[0] ?? null;
 }
@@ -328,6 +351,7 @@ export async function getTrainingAnalytics(userId: string) {
       startedAt: workoutSessions.startedAt,
       completedAt: workoutSessions.completedAt,
       title: planWorkouts.title,
+      planName: plans.name,
       planDay: planWorkouts.dayNumber,
       dayLabel: planWorkouts.label,
       effort: workoutSessions.perceivedEffort,
@@ -339,9 +363,10 @@ export async function getTrainingAnalytics(userId: string) {
     })
     .from(workoutSessions)
     .innerJoin(planWorkouts, eq(planWorkouts.id, workoutSessions.planWorkoutId))
+    .innerJoin(plans, eq(plans.id, planWorkouts.planId))
     .leftJoin(setLogs, eq(setLogs.sessionId, workoutSessions.id))
     .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt)))
-    .groupBy(workoutSessions.id, planWorkouts.title, planWorkouts.dayNumber, planWorkouts.label)
+    .groupBy(workoutSessions.id, planWorkouts.title, plans.name, planWorkouts.dayNumber, planWorkouts.label)
     .orderBy(desc(workoutSessions.startedAt))
     .limit(60);
 

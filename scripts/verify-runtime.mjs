@@ -39,7 +39,15 @@ try {
 
   const [template] = await sql`select id from plan_templates order by is_featured desc limit 1`;
   const [exercise] = await sql`select id, name, slug, equipment from exercises order by name limit 1`;
-  const [plan] = await sql`insert into plans (user_id, source_template_id, name, goal, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime plan', 'get_stronger', 3, 8) returning id`;
+  const [plan] = await sql`insert into plans (user_id, source_template_id, name, goal, is_current, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime strength plan', 'get_stronger', true, 3, 8) returning id`;
+  await sql`insert into plans (user_id, source_template_id, name, goal, is_current, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime fitness plan', 'general_fitness', false, 4, 8)`;
+  const [planCounts] = await sql`select count(*)::int as total, count(*) filter (where is_current)::int as current from plans where user_id = ${userId} and status = 'active'`;
+  assert(planCounts.total === 2 && planCounts.current === 1, "A user should keep multiple active plans with exactly one current plan");
+  await sql`insert into profiles (user_id, goal, experience, diet, days_per_week, onboarding_complete) values (${userId}, 'get_stronger', 'beginner', 'vegan', 3, true)`;
+  const planWorkspace = await fetch(`${baseUrl}/app/plans`, { headers: { cookie } });
+  assert(planWorkspace.ok, `Plan workspace returned ${planWorkspace.status}`);
+  const planWorkspaceHtml = await planWorkspace.text();
+  assert(planWorkspaceHtml.includes("Runtime strength plan") && planWorkspaceHtml.includes("Runtime fitness plan"), "Plan workspace did not render both saved plans");
   const [workout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 1, 'Runtime strength', 'Runtime analytics verification') returning id`;
   const [planExercise] = await sql`insert into plan_exercises (workout_id, exercise_id, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workout.id}, ${exercise.id}, 1, 1, 8, 12, 90, 2) returning id`;
   const [workoutSession] = await sql`insert into workout_sessions (user_id, plan_workout_id, started_at, completed_at, perceived_effort) values (${userId}, ${workout.id}, now() - interval '35 minutes', now(), 7) returning id`;
@@ -61,7 +69,7 @@ try {
   const coachBody = await coach.json();
   assert(coachBody.message?.content?.includes("double progression"), "Coach response shape or content was unexpected");
 
-  console.log("Runtime verification passed: starter plan → sign-up → workout snapshot → analytics → coach → Postgres.");
+  console.log("Runtime verification passed: starter plan → sign-up → multiple plans → workout snapshot → analytics → coach → Postgres.");
 } finally {
   await sql`delete from "user" where email = ${email}`;
   await sql.end();

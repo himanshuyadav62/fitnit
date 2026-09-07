@@ -50,6 +50,13 @@
       "when": 1788723372921,
       "tag": "0006_small_abomination",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788753048113,
+      "tag": "0007_slippery_vertigo",
+      "breakpoints": true
     }
   ]
 }

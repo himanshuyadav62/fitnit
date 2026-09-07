@@ -13,6 +13,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 const timestamps = {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -233,11 +234,15 @@ export const plans = pgTable(
     name: text("name").notNull(),
     goal: goalEnum("goal").notNull(),
     status: planStatusEnum("status").default("active").notNull(),
+    isCurrent: boolean("is_current").default(false).notNull(),
     daysPerWeek: integer("days_per_week").notNull(),
     durationWeeks: integer("duration_weeks").notNull(),
     ...timestamps,
   },
-  (table) => [index("plans_user_status_idx").on(table.userId, table.status)],
+  (table) => [
+    index("plans_user_status_idx").on(table.userId, table.status),
+    uniqueIndex("plans_user_current_idx").on(table.userId).where(sql`${table.isCurrent} = true`),
+  ],
 );
 
 export const planWorkouts = pgTable(
