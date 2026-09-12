@@ -20,6 +20,10 @@ try {
   const publicPage = await fetch(`${baseUrl}/plans/starter`);
   assert(publicPage.ok, `Starter plan returned ${publicPage.status}`);
   assert((await publicPage.text()).includes("Beginner Vegan Muscle Gain"), "Starter plan seed was not rendered");
+  const privatePhoto = await fetch(`${baseUrl}/api/transformation-photos/00000000-0000-4000-8000-000000000000`);
+  assert(privatePhoto.status === 401, "Transformation photos must reject unauthenticated requests");
+  const privatePhotoDelete = await fetch(`${baseUrl}/api/transformation-photos/00000000-0000-4000-8000-000000000000`, { method: "DELETE" });
+  assert(privatePhotoDelete.status === 401, "Transformation photo deletion must reject unauthenticated requests");
   const [benchGuide, deadliftGuide] = await Promise.all([
     fetch(`${baseUrl}/exercises/barbell-bench-press`),
     fetch(`${baseUrl}/exercises/barbell-deadlift`),
@@ -92,6 +96,9 @@ try {
   const profilePage = await fetch(`${baseUrl}/app/settings`, { headers: { cookie } });
   const profileHtml = await profilePage.text();
   assert(profilePage.ok && profileHtml.includes("Training consistency") && profileHtml.includes("Achievements"), "Profile should render consistency and achievement summaries");
+  const transformationPage = await fetch(`${baseUrl}/app/transformation`, { headers: { cookie } });
+  const transformationHtml = await transformationPage.text();
+  assert(transformationPage.ok && transformationHtml.includes("Transformation timelapse") && transformationHtml.includes("Private by default"), "Transformation journey should render for an authenticated user");
 
   const coach = await fetch(`${baseUrl}/api/coach`, {
     method: "POST",
@@ -102,7 +109,7 @@ try {
   const coachBody = await coach.json();
   assert(coachBody.message?.content?.includes("double progression"), "Coach response shape or content was unexpected");
 
-  console.log("Runtime verification passed: exercise guides → multiple plans → day deletion → plan archiving → preserved analytics → profile consistency → coach → Postgres.");
+  console.log("Runtime verification passed: exercise guides → multiple plans → day deletion → plan archiving → preserved analytics → profile consistency → private transformation journey → coach → Postgres.");
 } finally {
   await sql`delete from "user" where email = ${email}`;
   await sql.end();

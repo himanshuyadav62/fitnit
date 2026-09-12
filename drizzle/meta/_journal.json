@@ -71,6 +71,13 @@
       "when": 1789191123996,
       "tag": "0009_cloudy_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789210600334,
+      "tag": "0010_curious_professor_monster",
+      "breakpoints": true
     }
   ]
 }

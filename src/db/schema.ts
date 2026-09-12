@@ -393,6 +393,28 @@ export const measurements = pgTable(
   (table) => [uniqueIndex("measurement_user_date_idx").on(table.userId, table.measuredOn)],
 );
 
+export const transformationPhotos = pgTable(
+  "transformation_photos",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    capturedOn: date("captured_on").notNull(),
+    blobPathname: text("blob_pathname").notNull(),
+    blobEtag: text("blob_etag").notNull(),
+    contentType: text("content_type").notNull(),
+    width: integer("width").notNull(),
+    height: integer("height").notNull(),
+    byteSize: integer("byte_size").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("transformation_photo_user_date_idx").on(table.userId, table.capturedOn),
+    uniqueIndex("transformation_photo_blob_idx").on(table.blobPathname),
+  ],
+);
+
 export const dailyCheckins = pgTable(
   "daily_checkins",
   {

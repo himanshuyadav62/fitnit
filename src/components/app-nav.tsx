@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, ChartNoAxesCombined, Dumbbell, House, LibraryBig, UserRound } from "lucide-react";
+import { Bot, ChartNoAxesCombined, Dumbbell, Film, House, LibraryBig, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const items = [
   { href: "/app/plan", label: "My plan", icon: Dumbbell },
   { href: "/app/plans", label: "Library", icon: LibraryBig },
   { href: "/app/progress", label: "Analytics", icon: ChartNoAxesCombined },
+  { href: "/app/transformation", label: "Journey", icon: Film },
   { href: "/app/coach", label: "Coach", icon: Bot },
   { href: "/app/settings", label: "Profile", icon: UserRound },
 ];
@@ -18,7 +19,7 @@ const items = [
 export function AppNav({ mobile = false }: { mobile?: boolean }) {
   const pathname = usePathname();
   return (
-    <nav className={cn(mobile ? "grid grid-cols-6" : "space-y-1")}>
+    <nav className={cn(mobile ? "grid grid-cols-7" : "space-y-1")}>
       {items.map(({ href, label, icon: Icon }) => {
         const active = href === "/app" || href === "/app/plan" ? pathname === href : pathname.startsWith(href);
         return (

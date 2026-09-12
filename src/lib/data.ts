@@ -15,6 +15,7 @@ import {
   setLogs,
   templateExercises,
   templateWorkouts,
+  transformationPhotos,
   workoutSessions,
   workoutSessionExercises,
 } from "@/db/schema";
@@ -440,6 +441,22 @@ export async function getConsistencyActivity(userId: string) {
     .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt), gte(workoutSessions.completedAt, since)))
     .groupBy(workoutSessions.id)
     .orderBy(asc(workoutSessions.completedAt));
+}
+
+export async function getTransformationPhotos(userId: string) {
+  return db
+    .select({
+      id: transformationPhotos.id,
+      capturedOn: transformationPhotos.capturedOn,
+      blobEtag: transformationPhotos.blobEtag,
+      width: transformationPhotos.width,
+      height: transformationPhotos.height,
+      byteSize: transformationPhotos.byteSize,
+    })
+    .from(transformationPhotos)
+    .where(eq(transformationPhotos.userId, userId))
+    .orderBy(asc(transformationPhotos.capturedOn))
+    .limit(400);
 }
 
 export async function getProgress(userId: string) {
