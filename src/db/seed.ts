@@ -1,11 +1,14 @@
 import { loadEnvConfig } from "@next/env";
 import { eq } from "drizzle-orm";
 
+import type { ExerciseGuide } from "./schema";
+import { exerciseGuides } from "./exercise-guides";
+
 loadEnvConfig(process.cwd());
 
 type ExerciseSeed = {
   slug: string; name: string; movementPattern: string; primaryMuscles: string[]; equipment: string;
-  instructions: string[]; cues: string[]; videoUrl?: string;
+  instructions: string[]; cues: string[]; guide?: ExerciseGuide; videoUrl?: string;
 };
 type ProgramExercise = readonly [string, number, number, number, number, number?, string?];
 type TemplateSeed = {
@@ -21,12 +24,12 @@ const rawExercises: Array<[string, string, string, string[], string, string[], s
   ["goblet-squat", "Goblet squat", "squat", ["quads", "glutes"], "dumbbell", ["Hold one dumbbell at your chest.", "Sit between your hips with your whole foot planted.", "Stand tall by driving the floor away."], ["Knees follow toes", "Ribs stacked", "Control the descent"]],
   ["barbell-back-squat", "Barbell back squat", "squat", ["quads", "glutes", "core"], "barbell and rack", ["Set the bar securely across your upper back.", "Brace, then sit down between your hips.", "Drive through the whole foot to stand."], ["Brace before each rep", "Knees track over toes", "Use safeties"]],
   ["dumbbell-bench-press", "Dumbbell bench press", "horizontal push", ["chest", "triceps"], "dumbbells and bench", ["Set your shoulder blades into the bench.", "Lower the dumbbells beside your chest.", "Press up without bouncing."], ["Wrists stacked", "Feet grounded", "Control the bottom"]],
-  ["barbell-bench-press", "Barbell bench press", "horizontal push", ["chest", "triceps", "front delts"], "barbell, bench and rack", ["Plant your feet and set your upper back.", "Lower the bar to your lower chest with control.", "Press the bar up and slightly back."], ["Use a spotter or safeties", "Wrists over elbows", "No bounce"]],
+  ["barbell-bench-press", "Barbell bench press", "horizontal push", ["chest", "triceps", "front delts"], "barbell, bench and rack", ["Set your eyes just behind the bar, plant both feet, and keep your head, upper back, and glutes in contact with the bench.", "Take a closed, thumb-around grip that lets your forearms look close to vertical at the bottom; keep the bar low in the palm and wrists stacked over the forearms.", "Pull your shoulder blades back and slightly down, lift the chest into a comfortable natural arch, and brace before unracking.", "Unrack to straight arms above the shoulder joints, then lower the bar under control toward the lower-to-mid chest.", "Let the elbows travel at a comfortable angle below the shoulders rather than flaring directly sideways.", "Touch softly without bouncing, then drive through your feet and press the bar up and slightly back until the elbows are straight."], ["Feet press into the floor", "Upper back stays tight", "Wrists stack over elbows", "Touch softly, then press up and back", "Use a spotter or correctly set safeties"]],
   ["lat-pulldown", "Lat pulldown", "vertical pull", ["lats", "upper back"], "cable machine", ["Grip just outside shoulder width.", "Pull elbows down toward your ribs.", "Return slowly to a full stretch."], ["Chest tall", "No swinging", "Lead with elbows"]],
   ["pull-up", "Pull-up", "vertical pull", ["lats", "upper back", "biceps"], "pull-up bar", ["Begin from a controlled full hang.", "Drive your elbows down as your chest rises.", "Lower smoothly to the start."], ["Avoid kicking", "Keep ribs controlled", "Use assistance if needed"]],
   ["assisted-pull-up", "Assisted pull-up", "vertical pull", ["lats", "upper back"], "assisted pull-up machine", ["Choose enough assistance for smooth reps.", "Pull your chest toward the handles.", "Lower to straight arms under control."], ["Lead with elbows", "Avoid shrugging", "Full comfortable range"]],
   ["dumbbell-romanian-deadlift", "Dumbbell Romanian deadlift", "hinge", ["hamstrings", "glutes"], "dumbbells", ["Hold the dumbbells close to your thighs.", "Push your hips back with soft knees.", "Stand when you feel a strong hamstring stretch."], ["Long spine", "Hips travel back", "Weights stay close"]],
-  ["barbell-deadlift", "Barbell deadlift", "hinge", ["glutes", "hamstrings", "back"], "barbell and plates", ["Stand with the bar over mid-foot.", "Brace and take the slack out of the bar.", "Push the floor away and finish tall."], ["Bar stays close", "Do not jerk from the floor", "Reset when position changes"]],
+  ["barbell-deadlift", "Barbell deadlift", "hinge", ["glutes", "hamstrings", "back"], "barbell and plates", ["Stand with feet around hip width and the bar over mid-foot, roughly where the laces are tied.", "Hinge down and grip just outside the legs without rolling the bar away; keep the arms long.", "Bring the shins lightly to the bar, lift the chest enough to make a long neutral spine, and keep the shoulders slightly in front of the bar.", "Take a full breath, brace the trunk in every direction, and pull gently against the bar until the slack is gone.", "Push the floor away while keeping the bar close; hips and shoulders should rise together as the bar leaves the ground.", "Stand tall by straightening the knees and hips without leaning back, then lower under control by sending the hips back before bending the knees."], ["Bar begins and stays over mid-foot", "Brace before the bar moves", "Take the slack out—do not jerk", "Push the floor away", "Finish tall, not leaned back", "Reset each rep when position changes"]],
   ["kettlebell-deadlift", "Kettlebell deadlift", "hinge", ["glutes", "hamstrings"], "kettlebell", ["Place the bell between your feet.", "Hinge down and grip with a long spine.", "Stand by pushing the floor away."], ["Brace first", "Arms stay long", "Finish tall"]],
   ["seated-dumbbell-overhead-press", "Seated dumbbell overhead press", "vertical push", ["shoulders", "triceps"], "dumbbells and bench", ["Sit with your back supported.", "Start with wrists over elbows.", "Press overhead and lower under control."], ["Ribs down", "Stay controlled", "Move smoothly"]],
   ["standing-barbell-overhead-press", "Standing barbell overhead press", "vertical push", ["shoulders", "triceps", "core"], "barbell and rack", ["Start with the bar at upper chest height.", "Brace and press overhead in a straight path.", "Lower to the shoulders under control."], ["Squeeze glutes", "Move your head through", "No excessive lean"]],
@@ -97,6 +100,7 @@ const exerciseSeed: ExerciseSeed[] = rawExercises.map(([slug, name, movementPatt
   equipment,
   instructions,
   cues,
+  guide: exerciseGuides[slug],
   videoUrl: curatedVideoUrls[slug],
 }));
 

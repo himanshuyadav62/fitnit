@@ -110,6 +110,16 @@ export type OnboardingAnswers = {
   selectedPlanSlug?: string;
 };
 
+export type ExerciseGuide = {
+  overview: string;
+  videoFocus: string[];
+  setup: string[];
+  breathing: string[];
+  commonMistakes: Array<{ issue: string; correction: string }>;
+  safety: string[];
+  progression: string[];
+};
+
 export const profiles = pgTable("profiles", {
   userId: text("user_id")
     .primaryKey()
@@ -144,6 +154,7 @@ export const exercises = pgTable(
     equipment: text("equipment").notNull(),
     instructions: text("instructions").array().notNull(),
     cues: text("cues").array().notNull(),
+    guide: jsonb("guide").$type<ExerciseGuide>(),
     videoUrl: text("video_url"),
     createdByUserId: text("created_by_user_id").references(() => user.id, { onDelete: "cascade" }),
     ...timestamps,

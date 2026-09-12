@@ -20,6 +20,14 @@ try {
   const publicPage = await fetch(`${baseUrl}/plans/starter`);
   assert(publicPage.ok, `Starter plan returned ${publicPage.status}`);
   assert((await publicPage.text()).includes("Beginner Vegan Muscle Gain"), "Starter plan seed was not rendered");
+  const [benchGuide, deadliftGuide] = await Promise.all([
+    fetch(`${baseUrl}/exercises/barbell-bench-press`),
+    fetch(`${baseUrl}/exercises/barbell-deadlift`),
+  ]);
+  assert(benchGuide.ok && deadliftGuide.ok, "Public Bench Press and Deadlift guides should render without authentication");
+  const [benchGuideHtml, deadliftGuideHtml] = await Promise.all([benchGuide.text(), deadliftGuide.text()]);
+  assert(benchGuideHtml.includes("Detailed technique notes") && benchGuideHtml.includes("Wrists fold far backward"), "Bench Press guide did not render its expanded technique notes");
+  assert(deadliftGuideHtml.includes("Detailed technique notes") && deadliftGuideHtml.includes("The bar drifts away from the legs"), "Deadlift guide did not render its expanded technique notes");
 
   const signUp = await fetch(`${baseUrl}/api/auth/sign-up/email`, {
     method: "POST",
@@ -48,6 +56,8 @@ try {
   assert(planWorkspace.ok, `Plan workspace returned ${planWorkspace.status}`);
   const planWorkspaceHtml = await planWorkspace.text();
   assert(planWorkspaceHtml.includes("Runtime strength plan") && planWorkspaceHtml.includes("Runtime fitness plan"), "Plan workspace did not render both saved plans");
+  const templatePreview = await fetch(`${baseUrl}/app/plans/strength-foundations-3-day`, { headers: { cookie } });
+  assert(templatePreview.ok && (await templatePreview.text()).includes("View video &amp; technique"), "Template exercises should link to their video and technique guides");
   const [workout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 1, 'Deleted history day', 'Runtime analytics verification') returning id`;
   const [remainingWorkout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 2, 'Remaining live day', 'Runtime deletion verification') returning id`;
   const [planExercise] = await sql`insert into plan_exercises (workout_id, exercise_id, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workout.id}, ${exercise.id}, 1, 1, 8, 12, 90, 2) returning id`;
@@ -81,7 +91,7 @@ try {
   const coachBody = await coach.json();
   assert(coachBody.message?.content?.includes("double progression"), "Coach response shape or content was unexpected");
 
-  console.log("Runtime verification passed: starter plan → sign-up → multiple plans → day deletion → preserved analytics → coach → Postgres.");
+  console.log("Runtime verification passed: public exercise guides → template links → sign-up → multiple plans → day deletion → preserved analytics → coach → Postgres.");
 } finally {
   await sql`delete from "user" where email = ${email}`;
   await sql.end();

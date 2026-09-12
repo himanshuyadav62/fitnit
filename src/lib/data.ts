@@ -326,6 +326,12 @@ export async function getExercise(userId: string, slug: string) {
   });
 }
 
+export async function getPublicExercise(slug: string) {
+  return db.query.exercises.findFirst({
+    where: and(eq(exercises.slug, slug), isNull(exercises.createdByUserId)),
+  });
+}
+
 export async function getActivePlanExercise(userId: string, slug: string, planExerciseId?: string) {
   const rows = await db
     .select({
