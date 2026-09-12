@@ -64,6 +64,7 @@ try {
   assert(templatePreview.ok && (await templatePreview.text()).includes("View video &amp; technique"), "Template exercises should link to their video and technique guides");
   const [workout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 1, 'Deleted history day', 'Runtime analytics verification') returning id`;
   const [remainingWorkout] = await sql`insert into plan_workouts (plan_id, day_number, title, focus) values (${plan.id}, 2, 'Remaining live day', 'Runtime deletion verification') returning id`;
+  await sql`insert into plan_exercises (workout_id, exercise_id, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${remainingWorkout.id}, ${exercise.id}, 1, 3, 8, 12, 90, 2)`;
   const [planExercise] = await sql`insert into plan_exercises (workout_id, exercise_id, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workout.id}, ${exercise.id}, 1, 1, 8, 12, 90, 2) returning id`;
   const [workoutSession] = await sql`insert into workout_sessions (user_id, plan_workout_id, started_at, completed_at, perceived_effort) values (${userId}, ${workout.id}, now() - interval '35 minutes', now(), 7) returning id`;
   await sql`insert into workout_session_exercises (session_id, plan_exercise_id, exercise_id, exercise_name, exercise_slug, equipment, sort_order, sets, rep_min, rep_max, rest_seconds, target_rir) values (${workoutSession.id}, ${planExercise.id}, ${exercise.id}, ${exercise.name}, ${exercise.slug}, ${exercise.equipment}, 1, 1, 8, 12, 90, 2)`;
@@ -77,6 +78,8 @@ try {
   const livePlan = await fetch(`${baseUrl}/app/plan`, { headers: { cookie } });
   assert(livePlan.ok, `Live plan returned ${livePlan.status}`);
   const livePlanHtml = await livePlan.text();
+  assert(!/:E\{/.test(livePlanHtml), "Live plan emitted a Server Component error in its streamed response");
+  assert(livePlanHtml.includes(exercise.name), "Populated plan should render its exercise and editing controls");
   assert(livePlanHtml.includes("Remaining live day") && !livePlanHtml.includes("Deleted history day"), "Deleted day should leave the live schedule while remaining days stay visible");
 
   await sql.begin(async (transaction) => {
