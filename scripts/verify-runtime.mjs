@@ -48,7 +48,7 @@ try {
   const [template] = await sql`select id from plan_templates order by is_featured desc limit 1`;
   const [exercise] = await sql`select id, name, slug, equipment from exercises order by name limit 1`;
   const [plan] = await sql`insert into plans (user_id, source_template_id, name, goal, is_current, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime strength plan', 'get_stronger', true, 3, 8) returning id`;
-  await sql`insert into plans (user_id, source_template_id, name, goal, is_current, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime fitness plan', 'general_fitness', false, 4, 8)`;
+  const [secondPlan] = await sql`insert into plans (user_id, source_template_id, name, goal, is_current, days_per_week, duration_weeks) values (${userId}, ${template.id}, 'Runtime fitness plan', 'general_fitness', false, 4, 8) returning id`;
   const [planCounts] = await sql`select count(*)::int as total, count(*) filter (where is_current)::int as current from plans where user_id = ${userId} and status = 'active'`;
   assert(planCounts.total === 2 && planCounts.current === 1, "A user should keep multiple active plans with exactly one current plan");
   await sql`insert into profiles (user_id, goal, experience, diet, days_per_week, onboarding_complete) values (${userId}, 'get_stronger', 'beginner', 'vegan', 3, true)`;
@@ -75,12 +75,23 @@ try {
   const livePlanHtml = await livePlan.text();
   assert(livePlanHtml.includes("Remaining live day") && !livePlanHtml.includes("Deleted history day"), "Deleted day should leave the live schedule while remaining days stay visible");
 
+  await sql.begin(async (transaction) => {
+    await transaction`update plans set status = 'archived', is_current = false where id = ${plan.id}`;
+    await transaction`update plans set is_current = true where id = ${secondPlan.id}`;
+  });
+  const archivedWorkspace = await fetch(`${baseUrl}/app/plans`, { headers: { cookie } });
+  const archivedWorkspaceHtml = await archivedWorkspace.text();
+  assert(archivedWorkspace.ok && archivedWorkspaceHtml.includes("Archived plans") && archivedWorkspaceHtml.includes("Runtime strength plan"), "Archived plans should remain visible and restorable");
+
   const analytics = await fetch(`${baseUrl}/app/progress`, { headers: { cookie } });
   assert(analytics.ok, `Analytics returned ${analytics.status}`);
   const analyticsHtml = await analytics.text();
   assert(analyticsHtml.includes("Analytics &amp; progress"), "Analytics page did not render");
   assert(analyticsHtml.includes(exercise.name), "Analytics did not include the logged exercise");
   assert(analyticsHtml.includes("Deleted history day"), "Deleting a day should preserve its completed workout history");
+  const profilePage = await fetch(`${baseUrl}/app/settings`, { headers: { cookie } });
+  const profileHtml = await profilePage.text();
+  assert(profilePage.ok && profileHtml.includes("Training consistency") && profileHtml.includes("Achievements"), "Profile should render consistency and achievement summaries");
 
   const coach = await fetch(`${baseUrl}/api/coach`, {
     method: "POST",
@@ -91,7 +102,7 @@ try {
   const coachBody = await coach.json();
   assert(coachBody.message?.content?.includes("double progression"), "Coach response shape or content was unexpected");
 
-  console.log("Runtime verification passed: public exercise guides → template links → sign-up → multiple plans → day deletion → preserved analytics → coach → Postgres.");
+  console.log("Runtime verification passed: exercise guides → multiple plans → day deletion → plan archiving → preserved analytics → profile consistency → coach → Postgres.");
 } finally {
   await sql`delete from "user" where email = ${email}`;
   await sql.end();

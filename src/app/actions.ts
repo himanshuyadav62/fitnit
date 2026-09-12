@@ -248,6 +248,63 @@ export async function selectPlan(planId: string): Promise<ActionState> {
   return { success: "Plan switched.", successId: crypto.randomUUID() };
 }
 
+export async function archivePlan(_state: ActionState, formData: FormData): Promise<ActionState> {
+  const currentUser = await requireUser();
+  const parsed = z.object({ planId: z.string().uuid() }).safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return { error: "Choose a valid plan." };
+
+  const result = await db.transaction(async (tx) => {
+    const activePlans = await tx
+      .select({ id: plans.id, name: plans.name, isCurrent: plans.isCurrent })
+      .from(plans)
+      .where(and(eq(plans.userId, currentUser.id), eq(plans.status, "active")))
+      .orderBy(desc(plans.updatedAt))
+      .for("update");
+    const target = activePlans.find((plan) => plan.id === parsed.data.planId);
+    if (!target) return null;
+
+    await tx.update(plans).set({ status: "archived", isCurrent: false, updatedAt: new Date() }).where(eq(plans.id, target.id));
+    const remainingPlans = activePlans.filter((plan) => plan.id !== target.id);
+    if (target.isCurrent || !remainingPlans.some((plan) => plan.isCurrent)) {
+      const replacement = remainingPlans[0];
+      if (replacement) await tx.update(plans).set({ isCurrent: true, updatedAt: new Date() }).where(eq(plans.id, replacement.id));
+    }
+    return target.name;
+  });
+
+  if (!result) return { error: "Active plan not found." };
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plans");
+  revalidatePath("/app/progress");
+  return { success: `${result} archived. Workout history is preserved.`, successId: crypto.randomUUID() };
+}
+
+export async function restorePlan(formData: FormData) {
+  const currentUser = await requireUser();
+  const planId = z.string().uuid().parse(formData.get("planId"));
+
+  await db.transaction(async (tx) => {
+    const [archived] = await tx
+      .select({ id: plans.id })
+      .from(plans)
+      .where(and(eq(plans.id, planId), eq(plans.userId, currentUser.id), eq(plans.status, "archived")))
+      .for("update")
+      .limit(1);
+    if (!archived) throw new Error("Archived plan not found.");
+    const [current] = await tx
+      .select({ id: plans.id })
+      .from(plans)
+      .where(and(eq(plans.userId, currentUser.id), eq(plans.status, "active"), eq(plans.isCurrent, true)))
+      .limit(1);
+    await tx.update(plans).set({ status: "active", isCurrent: !current, updatedAt: new Date() }).where(eq(plans.id, archived.id));
+  });
+
+  revalidatePath("/app");
+  revalidatePath("/app/plan");
+  revalidatePath("/app/plans");
+}
+
 export async function updatePlanDetails(_state: ActionState, formData: FormData): Promise<ActionState> {
   const currentUser = await requireUser();
   const parsed = z.object({

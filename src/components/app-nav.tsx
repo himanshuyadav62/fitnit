@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, ChartNoAxesCombined, Dumbbell, House, LibraryBig, Settings } from "lucide-react";
+import { Bot, ChartNoAxesCombined, Dumbbell, House, LibraryBig, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -12,7 +12,7 @@ const items = [
   { href: "/app/plans", label: "Library", icon: LibraryBig },
   { href: "/app/progress", label: "Analytics", icon: ChartNoAxesCombined },
   { href: "/app/coach", label: "Coach", icon: Bot },
-  { href: "/app/settings", label: "Settings", icon: Settings },
+  { href: "/app/settings", label: "Profile", icon: UserRound },
 ];
 
 export function AppNav({ mobile = false }: { mobile?: boolean }) {

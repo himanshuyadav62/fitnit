@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -223,7 +223,7 @@ export async function getActivePlan(userId: string) {
   return { ...plan, workouts: groupWorkouts(rows) };
 }
 
-export async function getUserPlans(userId: string) {
+async function getUserPlansByStatus(userId: string, status: "active" | "archived") {
   return db
     .select({
       id: plans.id,
@@ -241,9 +241,17 @@ export async function getUserPlans(userId: string) {
     .from(plans)
     .leftJoin(planWorkouts, and(eq(planWorkouts.planId, plans.id), eq(planWorkouts.isActive, true)))
     .leftJoin(planExercises, eq(planExercises.workoutId, planWorkouts.id))
-    .where(and(eq(plans.userId, userId), eq(plans.status, "active")))
+    .where(and(eq(plans.userId, userId), eq(plans.status, status)))
     .groupBy(plans.id)
     .orderBy(desc(plans.isCurrent), desc(plans.updatedAt));
+}
+
+export function getUserPlans(userId: string) {
+  return getUserPlansByStatus(userId, "active");
+}
+
+export function getArchivedPlans(userId: string) {
+  return getUserPlansByStatus(userId, "archived");
 }
 
 export async function getProfile(userId: string) {
@@ -415,6 +423,23 @@ export async function getTrainingAnalytics(userId: string) {
     .orderBy(desc(workoutSessionExercises.sessionId), asc(workoutSessionExercises.sortOrder));
 
   return { sessions, exerciseTotals, recentExercises };
+}
+
+export async function getConsistencyActivity(userId: string) {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - 380);
+
+  return db
+    .select({
+      sessionId: workoutSessions.id,
+      completedAt: workoutSessions.completedAt,
+      sets: sql<number>`count(${setLogs.id})::int`,
+    })
+    .from(workoutSessions)
+    .leftJoin(setLogs, and(eq(setLogs.sessionId, workoutSessions.id), eq(setLogs.completed, true)))
+    .where(and(eq(workoutSessions.userId, userId), isNotNull(workoutSessions.completedAt), gte(workoutSessions.completedAt, since)))
+    .groupBy(workoutSessions.id)
+    .orderBy(asc(workoutSessions.completedAt));
 }
 
 export async function getProgress(userId: string) {
