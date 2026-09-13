@@ -1,16 +1,16 @@
 /* eslint-disable @next/next/no-img-element -- private authenticated image routes cannot be fetched by Next's unauthenticated image optimizer */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { upload } from "@vercel/blob/client";
 import { Camera, CheckCircle2, Images, LoaderCircle, Pause, Play, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
+import { DailyPhotoCamera } from "@/components/daily-photo-camera";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -53,7 +53,6 @@ async function compressPhoto(file: File) {
 
 export function TransformationStudio({ userId, photos, blobConfigured }: { userId: string; photos: Photo[]; blobConfigured: boolean }) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [deleting, setDeleting] = useState(false);
@@ -76,8 +75,8 @@ export function TransformationStudio({ userId, photos, blobConfigured }: { userI
   }, [current, index, photos]);
 
   async function handlePhoto(file: File) {
-    if (!blobConfigured) return toast.error("Connect the private Blob store to this Vercel project first.");
-    if (!file.type.startsWith("image/")) return toast.error("Choose a JPEG, PNG, or WebP image.");
+    if (!blobConfigured) { toast.error("Connect the private Blob store to this Vercel project first."); return false; }
+    if (!file.type.startsWith("image/")) { toast.error("A camera image is required."); return false; }
     setUploading(true);
     setProgress(8);
     try {
@@ -94,11 +93,12 @@ export function TransformationStudio({ userId, photos, blobConfigured }: { userI
       toast.success(photos.some((photo) => photo.capturedOn === capturedOn) ? "Today’s photo replaced." : "Today’s photo added to your journey.");
       router.refresh();
       window.setTimeout(() => router.refresh(), 1800);
+      return true;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The photo could not be uploaded.");
+      return false;
     } finally {
       setUploading(false);
-      if (inputRef.current) inputRef.current.value = "";
     }
   }
 
@@ -122,7 +122,7 @@ export function TransformationStudio({ userId, photos, blobConfigured }: { userI
     <div className="grid gap-6 xl:grid-cols-[.72fr_1.28fr]">
       <Card className="border-primary/20 bg-primary/5"><CardHeader><div className="flex items-start justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><Camera className="size-5 text-primary" /> Today’s frame</CardTitle><CardDescription className="mt-1">One aligned photo a day creates a transformation worth replaying.</CardDescription></div>{photos.some((photo) => photo.capturedOn === todayKey()) && <Badge><CheckCircle2 className="size-3" /> Added today</Badge>}</div></CardHeader><CardContent className="space-y-5">
         <div className="rounded-xl border border-dashed bg-background/40 p-5 text-sm text-muted-foreground"><p className="font-medium text-foreground">For a smooth result</p><ul className="mt-2 space-y-1.5"><li>• Use the same pose and camera height.</li><li>• Keep lighting and distance consistent.</li><li>• Wear similar fitted clothing.</li></ul></div>
-        <div><Label htmlFor="transformation-photo">Take or choose today’s photo</Label><input ref={inputRef} id="transformation-photo" type="file" accept="image/jpeg,image/png,image/webp" capture="user" disabled={uploading || !blobConfigured} className="mt-2 block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-primary-foreground" onChange={(event) => { const file = event.target.files?.[0]; if (file) void handlePhoto(file); }} /></div>
+        <DailyPhotoCamera disabled={!blobConfigured} uploading={uploading} onUpload={handlePhoto} />
         {uploading && <div><div className="mb-2 flex items-center justify-between text-xs"><span className="flex items-center gap-1.5"><LoaderCircle className="size-3.5 animate-spin" /> Optimizing and uploading</span><span>{Math.round(progress)}%</span></div><Progress value={progress} /></div>}
         {!blobConfigured && <p className="text-xs text-amber-300">Blob is not configured locally. Connect the private store and pull Vercel environment variables.</p>}
         <div className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" /><p>Photos are compressed in your browser, uploaded directly to your private Blob store, and served only after account authentication.</p></div>
