@@ -19,17 +19,31 @@ describe("daily camera capture", () => {
 
   afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-  it("opens the camera on demand without a gallery picker or microphone", async () => {
+  it("opens the camera on demand without forcing gallery selection or using the microphone", async () => {
     const onUpload = vi.fn();
     const { container, unmount } = render(<DailyPhotoCamera disabled={false} uploading={false} onUpload={onUpload} />);
     expect(getUserMedia).not.toHaveBeenCalled();
-    expect(container.querySelector('input[type="file"]')).toBeNull();
+    expect(container.querySelector('input[type="file"]')?.hasAttribute("capture")).toBe(false);
     fireEvent.click(screen.getByRole("button", { name: "Take today’s photo" }));
     await waitFor(() => expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: false })));
     await waitFor(() => expect(container.querySelector("video")?.srcObject).toBe(stream));
     expect(onUpload).not.toHaveBeenCalled();
     unmount();
     expect(stop).toHaveBeenCalled();
+  });
+
+  it("uploads an existing gallery photo without opening the camera", async () => {
+    const onUpload = vi.fn().mockResolvedValue(true);
+    render(<DailyPhotoCamera disabled={false} uploading={false} onUpload={onUpload} />);
+    const input = screen.getByLabelText("Choose a photo from gallery") as HTMLInputElement;
+    const click = vi.spyOn(input, "click");
+    fireEvent.click(screen.getByRole("button", { name: "Upload from gallery" }));
+    expect(click).toHaveBeenCalledOnce();
+    const file = new File(["photo"], "today.jpg", { type: "image/jpeg" });
+    fireEvent.change(input, { target: { files: [file] } });
+    await waitFor(() => expect(onUpload).toHaveBeenCalledWith(file));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(input.value).toBe("");
   });
 
   it("shows a useful permission error and allows retry", async () => {

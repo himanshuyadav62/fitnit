@@ -12,6 +12,7 @@ export function DailyPhotoCamera({ disabled, uploading, onUpload }: {
   onUpload: (file: File) => Promise<boolean>;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef(0);
   const previewUrlRef = useRef<string | null>(null);
@@ -110,7 +111,17 @@ export function DailyPhotoCamera({ disabled, uploading, onUpload }: {
   }
 
   return <div className="space-y-3">
-    {!open && <Button type="button" className="w-full" disabled={disabled || uploading} onClick={() => void startCamera()}><Camera /> Take today’s photo</Button>}
+    {!open && <div className="space-y-2">
+      <Button type="button" className="w-full" disabled={disabled || uploading} onClick={() => void startCamera()}><Camera /> Take today’s photo</Button>
+      <Button type="button" variant="outline" className="w-full" disabled={disabled || uploading} onClick={() => galleryRef.current?.click()}><Upload /> Upload from gallery</Button>
+      <p className="text-xs text-muted-foreground">Already took today’s photo? Choose a JPEG, PNG, or WebP from your device.</p>
+    </div>}
+    <input ref={galleryRef} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Choose a photo from gallery" hidden disabled={disabled || uploading || open} onChange={async (event) => {
+      const input = event.currentTarget;
+      const file = input.files?.[0];
+      if (file) await onUpload(file);
+      input.value = "";
+    }} />
     <div hidden={!open} className="space-y-3">
       <div className="relative aspect-[3/4] overflow-hidden rounded-xl border bg-black" hidden={Boolean(error)}>
         <video ref={videoRef} autoPlay playsInline muted hidden={Boolean(snapshot)} onLoadedData={() => setReady(true)} aria-label="Live camera preview" className={`size-full object-contain ${facing === "user" ? "-scale-x-100" : ""}`} />

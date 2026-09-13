@@ -76,7 +76,7 @@ export function TransformationStudio({ userId, photos, blobConfigured }: { userI
 
   async function handlePhoto(file: File) {
     if (!blobConfigured) { toast.error("Connect the private Blob store to this Vercel project first."); return false; }
-    if (!file.type.startsWith("image/")) { toast.error("A camera image is required."); return false; }
+    if (!file.type.startsWith("image/")) { toast.error("Choose a JPEG, PNG, or WebP image."); return false; }
     setUploading(true);
     setProgress(8);
     try {
