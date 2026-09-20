@@ -118,6 +118,7 @@ export type ExerciseGuide = {
   commonMistakes: Array<{ issue: string; correction: string }>;
   safety: string[];
   progression: string[];
+  sources?: Array<{ title: string; url: string }>;
 };
 
 export const profiles = pgTable("profiles", {
