@@ -16,6 +16,16 @@ function assert(condition, message) {
 try {
   const [videoCoverage] = await sql`select count(*)::int as total, count(video_url)::int as with_video from exercises where created_by_user_id is null`;
   assert(videoCoverage.total > 0 && videoCoverage.with_video === videoCoverage.total, "Every built-in exercise should have a form video");
+  const requestedTemplates = await sql`
+    select pt.slug, count(distinct tw.id)::int as training_days, count(te.id)::int as exercises
+    from plan_templates pt
+    left join template_workouts tw on tw.template_id = pt.id
+    left join template_exercises te on te.workout_id = tw.id
+    where pt.slug in ('upper-lower-ppl-reference-5-day', 'upper-lower-ppl-progression-5-day')
+    group by pt.slug
+  `;
+  assert(requestedTemplates.length === 2, "Both requested five-day templates should be seeded");
+  assert(requestedTemplates.every((template) => template.training_days === 5 && template.exercises === 32), "Each requested template should contain five lifting days and 32 exercise prescriptions");
 
   const publicPage = await fetch(`${baseUrl}/plans/starter`);
   assert(publicPage.ok, `Starter plan returned ${publicPage.status}`);
