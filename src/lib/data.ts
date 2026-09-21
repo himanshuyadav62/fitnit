@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/db";
 import {
@@ -260,7 +260,7 @@ export async function getProfile(userId: string) {
 }
 
 export async function getDashboardData(userId: string) {
-  const [profile, plan, recentSessions, latestMeasurement, totals] = await Promise.all([
+  const [profile, plan, recentSessions, latestMeasurement, totals, openSession] = await Promise.all([
     getProfile(userId),
     getActivePlan(userId),
     db
@@ -283,8 +283,9 @@ export async function getDashboardData(userId: string) {
       .select({ count: sql<number>`count(*)::int` })
       .from(workoutSessions)
       .where(and(eq(workoutSessions.userId, userId), sql`${workoutSessions.completedAt} is not null`)),
+    getOpenSession(userId),
   ]);
-  return { profile, plan, recentSessions, latestMeasurement, completedWorkouts: totals[0]?.count ?? 0 };
+  return { profile, plan, recentSessions, latestMeasurement, completedWorkouts: totals[0]?.count ?? 0, openSession };
 }
 
 export async function getWorkoutSession(userId: string, sessionId: string) {
@@ -302,7 +303,7 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
     .where(and(eq(workoutSessions.id, sessionId), eq(workoutSessions.userId, userId)))
     .limit(1);
   if (!sessionRow[0]) return null;
-  const [exerciseRows, logs] = await Promise.all([
+  const [exerciseRows, logs, previousSets] = await Promise.all([
     db
       .select({
         id: workoutSessionExercises.planExerciseId,
@@ -325,8 +326,21 @@ export async function getWorkoutSession(userId: string, sessionId: string) {
       .where(eq(workoutSessionExercises.sessionId, sessionId))
       .orderBy(asc(workoutSessionExercises.sortOrder)),
     db.select().from(setLogs).where(eq(setLogs.sessionId, sessionId)),
+    sessionRow[0].completedAt ? Promise.resolve([]) : db
+      .selectDistinctOn([workoutSessionExercises.exerciseId, setLogs.setNumber], {
+        exerciseId: workoutSessionExercises.exerciseId,
+        setNumber: setLogs.setNumber,
+        weightKg: setLogs.weightKg,
+        reps: setLogs.reps,
+        rir: setLogs.rir,
+      })
+      .from(setLogs)
+      .innerJoin(workoutSessionExercises, and(eq(workoutSessionExercises.sessionId, setLogs.sessionId), eq(workoutSessionExercises.planExerciseId, setLogs.planExerciseId)))
+      .innerJoin(workoutSessions, eq(workoutSessions.id, setLogs.sessionId))
+      .where(and(eq(workoutSessions.userId, userId), ne(workoutSessions.id, sessionId), isNotNull(workoutSessions.completedAt), eq(setLogs.completed, true)))
+      .orderBy(workoutSessionExercises.exerciseId, setLogs.setNumber, desc(workoutSessions.startedAt)),
   ]);
-  return { ...sessionRow[0], exercises: exerciseRows, logs };
+  return { ...sessionRow[0], exercises: exerciseRows, logs, previousSets };
 }
 
 export async function getExercise(userId: string, slug: string) {
@@ -478,8 +492,18 @@ export async function getCoachHistory(userId: string) {
 }
 
 export async function getOpenSession(userId: string) {
-  return db.query.workoutSessions.findFirst({
-    where: and(eq(workoutSessions.userId, userId), isNull(workoutSessions.completedAt)),
-    orderBy: desc(workoutSessions.startedAt),
-  });
+  const rows = await db
+    .select({
+      id: workoutSessions.id,
+      planWorkoutId: workoutSessions.planWorkoutId,
+      startedAt: workoutSessions.startedAt,
+      title: planWorkouts.title,
+      focus: planWorkouts.focus,
+    })
+    .from(workoutSessions)
+    .innerJoin(planWorkouts, eq(planWorkouts.id, workoutSessions.planWorkoutId))
+    .where(and(eq(workoutSessions.userId, userId), isNull(workoutSessions.completedAt)))
+    .orderBy(desc(workoutSessions.startedAt))
+    .limit(1);
+  return rows[0] ?? null;
 }

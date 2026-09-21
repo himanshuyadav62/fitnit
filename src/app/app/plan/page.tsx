@@ -16,14 +16,14 @@ import { WorkoutDayDetailsDialog } from "@/components/workout-day-details-dialog
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getActivePlan, getExerciseLibrary, getProfile, getUserPlans } from "@/lib/data";
+import { getActivePlan, getExerciseLibrary, getOpenSession, getProfile, getUserPlans } from "@/lib/data";
 import { requireUser } from "@/lib/session";
 
 export const metadata: Metadata = { title: "My plan" };
 
 export default async function PlanPage() {
   const user = await requireUser();
-  const [plan, profile, exerciseLibrary, userPlans] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary(user.id), getUserPlans(user.id)]);
+  const [plan, profile, exerciseLibrary, userPlans, openSession] = await Promise.all([getActivePlan(user.id), getProfile(user.id), getExerciseLibrary(user.id), getUserPlans(user.id), getOpenSession(user.id)]);
   if (!profile?.onboardingComplete) return <Empty title="Complete your assessment first" copy="Your schedule and readiness answers are needed before a private plan can be created." href="/app/onboarding" label="Complete assessment" />;
   if (!plan) return <Empty title="No active plan" copy="Choose a research-informed template from the plan library, then customize every workout." href="/app/plans" label="Explore plans" />;
 
@@ -34,6 +34,7 @@ export default async function PlanPage() {
       <div className="space-y-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Switch plan</p><PlanSwitcher plans={userPlans.map(({ id, name, goal }) => ({ id, name, goal }))} currentPlanId={plan.id} /></div>
     </div>
     <div className="flex flex-wrap gap-2"><AddWorkoutDayDialog planId={plan.id} disabled={plan.workouts.length >= 7} /><PlanDetailsDialog id={plan.id} name={plan.name} goal={plan.goal} durationWeeks={plan.durationWeeks} /><Button variant="outline" asChild><Link href="/app/plans"><BookOpen /> Browse plans</Link></Button><form action={cloneStarterPlan}><SubmitButton variant="outline" pendingLabel="Creating plan…"><Copy /> Add recommendation</SubmitButton></form></div>
+    {openSession && <Card className="border-primary/30 bg-primary/5"><CardContent className="flex flex-col justify-between gap-4 p-5 sm:flex-row sm:items-center"><div><p className="text-xs font-medium uppercase tracking-[0.16em] text-primary">Workout in progress</p><p className="mt-1 font-medium">{openSession.title}</p><p className="text-sm text-muted-foreground">Your saved sets are waiting. Resume instead of starting over.</p></div><Button asChild><Link href={`/app/workouts/${openSession.id}`}>Resume workout <ArrowRight /></Link></Button></CardContent></Card>}
 
     <div className="grid gap-6 lg:grid-cols-2">{plan.workouts.map((workout) => <Card key={workout.id} className="border-white/8">
       <CardHeader><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><Badge variant="outline">Day {workout.dayNumber}</Badge>{workout.label && <Badge variant="secondary">{workout.label}</Badge>}</div><CardTitle className="mt-4">{workout.title}</CardTitle><CardDescription className="mt-1">{workout.focus}</CardDescription></div><div className="flex items-center gap-1"><WorkoutDayDetailsDialog id={workout.id} title={workout.title} focus={workout.focus} label={workout.label} /><DeleteWorkoutDayButton id={workout.id} title={workout.title} exerciseCount={workout.exercises.length} disabled={plan.workouts.length <= 1} /><Dumbbell className="size-5 text-primary" /></div></div></CardHeader>
@@ -47,7 +48,7 @@ export default async function PlanPage() {
           <RemoveExerciseButton id={exercise.id} name={exercise.name} />
         </div>)}</div>
         {workout.exercises.length === 0 && <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">This day is empty. Add its first exercise before starting.</div>}
-        <div className="mt-5 flex flex-col gap-2 sm:flex-row"><AddExerciseDialog workoutId={workout.id} exercises={exerciseLibrary} /><form action={startWorkout} className="flex-1"><input type="hidden" name="workoutId" value={workout.id} /><SubmitButton className="w-full" disabled={workout.exercises.length === 0} pendingLabel={`Starting day ${workout.dayNumber}…`}>Start day {workout.dayNumber} <ArrowRight /></SubmitButton></form></div>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row"><AddExerciseDialog workoutId={workout.id} exercises={exerciseLibrary} />{openSession?.planWorkoutId === workout.id ? <Button className="flex-1" asChild><Link href={`/app/workouts/${openSession.id}`}>Resume day {workout.dayNumber} <ArrowRight /></Link></Button> : <form action={startWorkout} className="flex-1"><input type="hidden" name="workoutId" value={workout.id} /><SubmitButton className="w-full" disabled={workout.exercises.length === 0 || Boolean(openSession)} pendingLabel={`Starting day ${workout.dayNumber}…`}>{openSession ? "Finish active workout first" : `Start day ${workout.dayNumber}`} {!openSession && <ArrowRight />}</SubmitButton></form>}</div>
       </CardContent>
     </Card>)}</div>
     <Card className="border-primary/20 bg-primary/5"><CardHeader><CardTitle className="text-base">Progression rule</CardTitle><CardDescription>When every set reaches the top of its rep range with steady technique and the prescribed reps in reserve, add the smallest load available. If form breaks or recovery slips, keep the load or reduce a set before adding more.</CardDescription></CardHeader></Card>

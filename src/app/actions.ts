@@ -584,6 +584,11 @@ export async function startWorkout(formData: FormData) {
     .where(and(eq(planWorkouts.id, workoutId), eq(planWorkouts.isActive, true), eq(plans.userId, currentUser.id), eq(plans.isCurrent, true), eq(plans.status, "active")))
     .limit(1);
   if (!owned[0]) throw new Error("Workout not found.");
+  const existingSession = await db.query.workoutSessions.findFirst({
+    where: and(eq(workoutSessions.userId, currentUser.id), isNull(workoutSessions.completedAt)),
+    orderBy: desc(workoutSessions.startedAt),
+  });
+  if (existingSession) redirect(`/app/workouts/${existingSession.id}`);
   const session = await db.transaction(async (tx) => {
     const prescription = await tx.select({
       planExerciseId: planExercises.id,
