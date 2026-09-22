@@ -260,7 +260,7 @@ export async function getProfile(userId: string) {
 }
 
 export async function getDashboardData(userId: string) {
-  const [profile, plan, recentSessions, latestMeasurement, totals, openSession] = await Promise.all([
+  const [profile, plan, recentSessions, latestMeasurement, totals, openSessions] = await Promise.all([
     getProfile(userId),
     getActivePlan(userId),
     db
@@ -283,9 +283,9 @@ export async function getDashboardData(userId: string) {
       .select({ count: sql<number>`count(*)::int` })
       .from(workoutSessions)
       .where(and(eq(workoutSessions.userId, userId), sql`${workoutSessions.completedAt} is not null`)),
-    getOpenSession(userId),
+    getOpenSessions(userId),
   ]);
-  return { profile, plan, recentSessions, latestMeasurement, completedWorkouts: totals[0]?.count ?? 0, openSession };
+  return { profile, plan, recentSessions, latestMeasurement, completedWorkouts: totals[0]?.count ?? 0, openSessions };
 }
 
 export async function getWorkoutSession(userId: string, sessionId: string) {
@@ -491,8 +491,8 @@ export async function getCoachHistory(userId: string) {
     .limit(40);
 }
 
-export async function getOpenSession(userId: string) {
-  const rows = await db
+export async function getOpenSessions(userId: string) {
+  return db
     .select({
       id: workoutSessions.id,
       planWorkoutId: workoutSessions.planWorkoutId,
@@ -503,7 +503,5 @@ export async function getOpenSession(userId: string) {
     .from(workoutSessions)
     .innerJoin(planWorkouts, eq(planWorkouts.id, workoutSessions.planWorkoutId))
     .where(and(eq(workoutSessions.userId, userId), isNull(workoutSessions.completedAt)))
-    .orderBy(desc(workoutSessions.startedAt))
-    .limit(1);
-  return rows[0] ?? null;
+    .orderBy(desc(workoutSessions.startedAt));
 }
